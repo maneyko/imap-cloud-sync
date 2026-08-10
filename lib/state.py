@@ -25,7 +25,8 @@ class State:
         # state = self.store.read(path)
         # return json.loads(state)
         return {
-            "last_processed_uid": 417050,
+            # "last_processed_uid": 417050,
+            "last_processed_uid": 417880,
             "uidvalidity": 1308597530,
             "message_count": 0,
             "compressed_bytes": 0,

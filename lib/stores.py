@@ -7,7 +7,8 @@ class FileStore:
     def __init__(self, *_):
         pass
 
-    def write(self, path: Path, data):
+    def write(self, path, data):
+        path = Path(path)
         if not path.is_absolute():
             path = app_root / path
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -18,7 +19,8 @@ class FileStore:
         else:
             raise RuntimeError(f"Invalid argument type: {type(data)}")
 
-    def read(self, path: Path) -> bytes:
+    def read(self, path) -> bytes:
+        path = Path(path)
         if not path.is_absolute():
             path = app_root / path
         return path.read_bytes()
@@ -28,8 +30,8 @@ class S3Store:
     def __init__(self, bucket_name):
         self.bucket_name = bucket_name
 
-    def write(self, path: Path, data):
+    def write(self, path, data):
         return save_to_s3(self.bucket_name, path, data)
 
-    def read(self, path: Path):
+    def read(self, path):
         return read_from_s3(self.bucket_name, path)

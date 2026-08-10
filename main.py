@@ -80,8 +80,8 @@ class SyncMailbox:
         mail_path = mbox_path / "email" / stem_path
         meta_path = mbox_path / "metadata" / stem_path
 
-        self.store.write(mail_path.with_suffix(".eml.zst"), mail.body_compressed)
-        self.store.write(meta_path.with_suffix(".json"), json.dumps(mail.metadata))
+        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed, storage_class=self.config.storage["storage_class"])
+        self.store.write(f"{meta_path}.json", json.dumps(mail.metadata))
 
     def update_local_state(self, mail: EmailRFC822):
         self.state.message_count(self.state.message_count() + 1)

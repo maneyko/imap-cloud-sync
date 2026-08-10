@@ -16,6 +16,7 @@ DEFAULTS = {
     "processing": {"batch_size": 5},
     "storage": {
         "bucket_name": "my-mail-archive",
+        "storage_class": "DEEP_ARCHIVE",
         "timezone": "America/Chicago",
     }
 }
@@ -56,5 +57,5 @@ class Config:
 
     @cached_property
     def store(self):
-        from lib.stores import FileStore
-        return FileStore(self.storage["bucket_name"])
+        from lib.stores import S3Store as Store
+        return Store(self.storage["bucket_name"])
