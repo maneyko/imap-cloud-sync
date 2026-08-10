@@ -7,6 +7,10 @@ from lib.util import zstd_compress
 
 
 class EmailRFC822:
+    email_address_fields = [
+        "from", "to", "bcc", "reply-to", "in-reply-to", "references"
+    ]
+
     def __init__(self, config, header: bytes, body: bytes):
         self.config = config
         self.header = header
@@ -48,16 +52,25 @@ class EmailRFC822:
             return msg_id.strip().strip("<>")
 
     @cached_property
+    def size(self):
+        return len(self.body)
+
+    @cached_property
+    def size_compressed(self):
+        return len(self.body_compressed)
+
+    @cached_property
     def metadata(self):
-        result = {"size": len(self.body), "internaldate": self.internaldate.isoformat()}
+        result = {
+            "internaldate": self.internaldate.isoformat(),
+            "size": {"uncompressed": self.size, "compressed": self.size_compressed},
+        }
         if self.msg is not None:
             result.update({
                 "message_id": self.message_id,
                 "subject": self.msg["subject"],
             })
-            result.update({field.replace("-", "_"): self._getaddresses(field) for field in [
-                "from", "to", "bcc", "reply-to", "in-reply-to", "references"
-            ]})
+            result.update({field.replace("-", "_"): self._getaddresses(field) for field in self.email_address_fields})
         return result
 
     @cached_property

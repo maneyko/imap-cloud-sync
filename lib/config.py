@@ -4,10 +4,16 @@ import tomllib
 from zoneinfo import ZoneInfo
 
 DEFAULTS = {
-    "imap": {"port": 993},
-    "processing": {
-        "batch_size": 5,
+    "imap": {
+        "port": 993,
+        "mailboxes": [
+            '"INBOX"',
+            'INBOX',
+            '"[Gmail]/Sent Mail"',
+            '"Sent Items"',
+        ],
     },
+    "processing": {"batch_size": 5},
     "storage": {
         "bucket_name": "my-mail-archive",
         "timezone": "America/Chicago",
@@ -47,3 +53,8 @@ class Config:
     @cached_property
     def timezone(self):
         return ZoneInfo(self.storage["timezone"])
+
+    @cached_property
+    def store(self):
+        from lib.stores import FileStore
+        return FileStore(self.storage["bucket_name"])

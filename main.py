@@ -3,8 +3,8 @@
 # dependencies = ["boto3"]
 # ///
 
-# exec(open("sync.py").read())
-# from sync import EmailAddress, SyncMailbox; addr = EmailAddress("me@example.com"); mbox = SyncMailbox(addr)
+# exec(open("main.py").read())
+# from main import EmailAddress, SyncMailbox; addr = EmailAddress("me@example.com"); mbox = SyncMailbox(addr)
 
 from functools import cached_property
 import json
@@ -12,9 +12,7 @@ import re
 import email
 from pathlib import Path
 
-from lib.email import EmailRFC822
-from lib.mail_client import MailClient
-from lib.state import State
+from lib import EmailRFC822, MailClient, State
 
 class EmailAddress:
     def __init__(self, email_address):
@@ -25,35 +23,55 @@ class EmailAddress:
 
 class Sync:
     def __init__(self, email_address: EmailAddress):
-        pass
+        self.email_address = email_address
+
+    @cached_property
+    def mailboxes(self):
+        mailbox_names = [mbox["name"].decode() for mbox in self.email_address.client.mailboxes]
+        return [mbox for mbox in mailbox_names if mbox in self.email_address.config.imap["mailboxes"]]
+
+    def validate_unique_mailboxes(self):
+        imap_names = [mbox["name"].decode() for mbox in self.mailboxes]
+        s3_names = [SyncMailbox.get_mailbox_s3_name(name) for name in imap_names]
+
+        if len(set(imap_names)) != len(set(s3_names)):
+            mapping = {"imap_names": imap_names, "s3_names": s3_names}
+            raise RuntimeError(f"Mailbox names for S3 are not unique: {json.dumps(mapping)}")
 
     def sync_all(self):
-        pass
+        self.validate_unique_mailboxes()
+        # for mailbox in self.mailboxes:
+        #     SyncMailbox(self.email_address, mailbox).run()
 
 
 class SyncMailbox:
+    @staticmethod
+    def get_mailbox_s3_name(name):
+        name = re.sub(r"['\"\[\]]", "", name)
+        name = name.replace(" ", "_")
+        name = re.sub(r"[^0-9a-zA-Z_-]", "-", name)
+        return name
+
     def __init__(self, email_address: EmailAddress, mailbox="INBOX"):
         self.email_address = email_address
         self.mailbox = mailbox
         self.client = email_address.client
         self.config = self.client.config
         self.state = State(self.config, mailbox)
+        self.store = self.config.store
+        self.mailbox_s3_name = self.get_mailbox_s3_name(mailbox)
 
     def run(self):
-        self.client.call("SELECT", self.mailbox, readonly=True)
+        self.client.select(self.mailbox)
         uids = self.client.uids(self.state.last_processed_uid())
 
         for event, mail in self.loop_uids(uids):
             if event == "email":
-                print("Processing", mail.uid)
+                print(f"Processing: uid={mail.uid} size_uncompressed={mail.size} size_compressed={mail.size_compressed}")
                 self.write_to_dest(mail)
                 self.update_local_state(mail)
             elif event == "batch_complete":
                 self.state.push_to_remote()
-
-    @cached_property
-    def mailbox_s3_name(self):
-        return self.mailbox
 
     def write_to_dest(self, mail: EmailRFC822):
         stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))
@@ -62,15 +80,13 @@ class SyncMailbox:
         mail_path = mbox_path / "email" / stem_path
         meta_path = mbox_path / "metadata" / stem_path
 
-        [d.parent.mkdir(parents=True, exist_ok=True) for d in (mail_path, meta_path)]
-
-        mail_path.with_suffix(".eml.zst").write_bytes(mail.body_compressed)
-        meta_path.with_suffix(".json").write_text(json.dumps(mail.metadata))
+        self.store.write(mail_path.with_suffix(".eml.zst"), mail.body_compressed)
+        self.store.write(meta_path.with_suffix(".json"), json.dumps(mail.metadata))
 
     def update_local_state(self, mail: EmailRFC822):
         self.state.message_count(self.state.message_count() + 1)
-        self.state.uncompressed_bytes(self.state.uncompressed_bytes() + len(mail.body))
-        self.state.compressed_bytes(self.state.compressed_bytes() + len(mail.body_compressed))
+        self.state.uncompressed_bytes(self.state.uncompressed_bytes() + mail.size)
+        self.state.compressed_bytes(self.state.compressed_bytes() + mail.size_compressed)
         self.state.last_processed_uid(mail.uid)
 
     def loop_uids(self, uids: list[bytes]):

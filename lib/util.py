@@ -39,15 +39,23 @@ def zstd_compress(data: bytes, level: int = 9) -> bytes:
         return subprocess.run(["zstd", f"-{level}"], input=data, capture_output=True)
 
 
-def save_to_s3(path, data):
-    bucket_name = config["storage"]["bucket_name"]
-    mailbox = "INBOX" # TODO
-    key = os.path.join(config["imap"]["username"], mailbox, path)
+def save_to_s3(bucket_name, path, data):
+    path = str(path).removeprefix("/")
     if s3_client:
-        s3_client.put_object(Bucket=bucket_name, Key=key, Body=data)
+        return s3_client.put_object(Bucket=bucket_name, Key=path, Body=data)
     else:
-        subprocess.run(
-            ["aws", "s3", "cp", "-", f"s3://{bucket_name}/{key}"],
+        return subprocess.run(
+            ["aws", "s3", "cp", "-", f"s3://{bucket_name}/{path}"],
             input=data,
         )
+
+def read_from_s3(bucket_name, path) -> bytes:
+    path = str(path).removeprefix("/")
+    if s3_client:
+        return s3_client.get_object(Bucket=bucket_name, Key=path)["Body"].read()
+    else:
+        return subprocess.run(
+            ["aws", "s3", "cp", f"s3://{bucket_name}/{path}", "-"],
+            capture_output=True
+        ).stdout
 
