@@ -63,11 +63,24 @@ class SyncMailbox:
 
     def run(self):
         self.client.select(self.mailbox)
-        uids = self.client.uids(self.state.last_processed_uid())
 
+        uidvalidity = self.client.uidvalidity(self.mailbox)
+        if self.state.uidvalidity() != uidvalidity:
+            print("WARNING: uidvalidity has updated!")
+            self.state.uidvalidity(uidvalidity)
+            self.state.last_processed_uid(self.state.defaults["last_processed_uid"])
+
+        uids = self.client.uids(self.state.last_processed_uid() + 1)
         for event, mail in self.loop_uids(uids):
             if event == "email":
-                print(f"Processing: uid={mail.uid} size_uncompressed={mail.size} size_compressed={mail.size_compressed}")
+                log_info = {
+                    "email_address": self.email_address.name,
+                    "mailbox": self.mailbox,
+                    "uid": mail.uid,
+                    "size_uncompressed": mail.size,
+                    "size_compressed": mail.size_compressed,
+                }
+                print(f"Processing: {json.dumps(log_info)}")
                 self.write_to_dest(mail)
                 self.update_local_state(mail)
             elif event == "batch_complete":
@@ -80,7 +93,10 @@ class SyncMailbox:
         mail_path = mbox_path / "email" / stem_path
         meta_path = mbox_path / "metadata" / stem_path
 
-        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed, storage_class=self.config.storage["storage_class"])
+        options = {"storage_class": self.config.storage["storage_class"]}
+        if mail.size_compressed < self.config.s3_glacier_min_size:
+            options["storage_class"] = "STANDARD"
+        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed, **options)
         self.store.write(f"{meta_path}.json", json.dumps(mail.metadata))
 
     def update_local_state(self, mail: EmailRFC822):

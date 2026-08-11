@@ -4,6 +4,8 @@ import sys
 
 from lib import config
 
+class NoSuchKey(Exception): pass
+
 zstd = None
 if sys.version_info >= (3, 14):
     from compression import zstd
@@ -31,13 +33,11 @@ brew install awscli
 """)
         sys.exit(1)
 
-
 def zstd_compress(data: bytes, level: int = 9) -> bytes:
     if zstd:
         return zstd.compress(data, level=level)
     else:
         return subprocess.run(["zstd", f"-{level}"], input=data, capture_output=True)
-
 
 def save_to_s3(bucket_name, path, data, **kwargs):
     path = str(path).removeprefix("/")
@@ -55,9 +55,16 @@ def save_to_s3(bucket_name, path, data, **kwargs):
 def read_from_s3(bucket_name, path) -> bytes:
     path = str(path).removeprefix("/")
     if s3_client:
-        return s3_client.get_object(Bucket=bucket_name, Key=path)["Body"].read()
+        try:
+            return s3_client.get_object(Bucket=bucket_name, Key=path)["Body"].read()
+        except Exception as err:
+            if err.response["Error"]["Code"] == "NoSuchKey":
+                raise NoSuchKey(*err.args)
     else:
-        return subprocess.run(
+        result = subprocess.run(
             ["aws", "s3", "cp", f"s3://{bucket_name}/{path}", "-"],
             capture_output=True
-        ).stdout
+        )
+        if b'Not Found' in result.stderr:
+            raise NoSuchKey(result.stderr.decode())
+        return result.stdout

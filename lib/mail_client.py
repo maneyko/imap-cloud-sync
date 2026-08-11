@@ -8,18 +8,25 @@ class MailClient:
     def __init__(self, email_address: str):
         self.email_address = email_address
         self.config = Config(self.email_address)
+        self._current_mailbox = None
         self.create_connection()
-        resp = self.login()[0].decode()
-        print(f"Logged in to IMAP server {self.conn.host} as user {self.config.imap["username"]}: {resp}")
 
     def create_connection(self):
         self.conn = imaplib.IMAP4_SSL(self.config.imap["server"], self.config.imap["port"])
+        resp = self.login()[0].decode()
+        print(f"Logged in to IMAP server {self.conn.host} as user {self.config.imap["username"]}: {resp}")
+        if self._current_mailbox is not None:
+            self.conn.select(self._current_mailbox[0], **self._current_mailbox[1])
+
 
     def call(self, func, *args, **kwargs):
         try:
             typ, data = getattr(self.conn, func.lower())(*args, **kwargs)
         except imaplib.IMAP4.abort:
-            self.conn.close()
+            try:
+                self.conn.logout()
+            except Exception:
+                pass
             self.create_connection()
             typ, data = getattr(self.conn, func.lower())(*args, **kwargs)
         if typ != "OK":
@@ -28,6 +35,7 @@ class MailClient:
 
     def select(self, mailbox, **kwargs):
         kwargs = {"readonly": True} | kwargs
+        self._current_mailbox = [mailbox, kwargs]
         return self.call("SELECT", mailbox, **kwargs)
 
     def uids(self, starting_uid, ending_uid=None) -> list[bytes]:

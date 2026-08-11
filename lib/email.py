@@ -23,7 +23,7 @@ class EmailRFC822:
 
     @cached_property
     def epoch(self) -> int:
-        return self.internaldate.timestamp()
+        return int(self.internaldate.timestamp())
 
     @cached_property
     def uid(self):
@@ -70,7 +70,9 @@ class EmailRFC822:
                 "message_id": self.message_id,
                 "subject": self.msg["subject"],
             })
-            result.update({field.replace("-", "_"): self._getaddresses(field) for field in self.email_address_fields})
+            for field in self.email_address_fields:
+                if addresses := self._getaddresses(field):
+                    result[field.replace("-", "_")] = addresses
         return result
 
     @cached_property
@@ -78,10 +80,13 @@ class EmailRFC822:
         return zstd_compress(self.body)
 
     def _getaddresses(self, header_name):
-        try:
-            return [
-                {"display_name": display_name, "email_address": addr}
-                for display_name, addr in email.utils.getaddresses(self.msg.get_all(header_name, []))
-            ]
-        except Exception:
-            return []
+        resp = []
+        for display_name, addr in email.utils.getaddresses(self.msg.get_all(header_name, []), strict=False):
+            entry = {}
+            if addr:
+                entry["email_address"] = addr
+            if name := display_name:
+                entry["display_name"] = name
+            if entry:
+                resp.append(entry)
+        return resp

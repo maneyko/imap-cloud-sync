@@ -1,8 +1,9 @@
 from functools import cached_property
 import json
 from pathlib import Path
+from lib.util import NoSuchKey
 
-DEFAULTS = {
+DEFAULTS1 = {
     "uidvalidity": 0,
     "last_processed_uid": 0,
     "message_count": 0,
@@ -10,7 +11,18 @@ DEFAULTS = {
     "compressed_bytes": 0,
 }
 
+DEFAULTS = {
+    "last_processed_uid": 417880,
+    # "uidvalidity": 1308597530,
+    "uidvalidity": 0,
+    "message_count": 0,
+    "compressed_bytes": 0,
+    "uncompressed_bytes": 0,
+}
+
 class State:
+    defaults = DEFAULTS
+
     def __init__(self, config, mailbox="INBOX"):
         self.email_address = config.email_address
         self.store = config.store
@@ -22,16 +34,11 @@ class State:
         return Path(self.email_address) / self.mailbox / "state.json"
 
     def pull_remote_state(self):
-        # state = self.store.read(path)
-        # return json.loads(state)
-        return {
-            # "last_processed_uid": 417050,
-            "last_processed_uid": 417880,
-            "uidvalidity": 1308597530,
-            "message_count": 0,
-            "compressed_bytes": 0,
-            "uncompressed_bytes": 0,
-        }
+        try:
+            state = self.store.read(self.path)
+            return json.loads(state)
+        except NoSuchKey:
+            return DEFAULTS
 
     def push_to_remote(self):
         return self.store.write(self.path, json.dumps(self._state))
