@@ -1,6 +1,7 @@
 #!/usr/bin/env -S uv run
 # /// script
 # dependencies = ["boto3"]
+# requires-python = ">=3.14"
 # ///
 
 # exec(open("main.py").read())
@@ -93,10 +94,7 @@ class SyncMailbox:
         mail_path = mbox_path / "email" / stem_path
         meta_path = mbox_path / "metadata" / stem_path
 
-        options = {"storage_class": self.config.storage["storage_class"]}
-        if mail.size_compressed < self.config.s3_glacier_min_size:
-            options["storage_class"] = "STANDARD"
-        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed, **options)
+        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed)
         self.store.write(f"{meta_path}.json", json.dumps(mail.metadata))
 
     def update_local_state(self, mail: EmailRFC822):
