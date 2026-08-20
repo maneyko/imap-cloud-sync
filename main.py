@@ -3,122 +3,95 @@
 # dependencies = ["boto3"]
 # requires-python = ">=3.14"
 # ///
+"""Sync every configured mailbox to S3, then exit.
 
-# exec(open("main.py").read())
-# from main import EmailAddress, SyncMailbox; addr = EmailAddress("me@example.com"); mbox = SyncMailbox(addr)
+This is the entry point used by the imap-sync systemd service (a oneshot unit
+driven by imap-sync.timer). main.py holds the sync logic but is import-only;
+this module just decides *what* to sync and reports failures via the exit code
+so that systemd marks a bad run as failed.
 
-from functools import cached_property
-import json
-import re
-import email
-from pathlib import Path
+Which addresses run:
+  * $IMAP_SYNC_ADDRESSES, comma or newline separated, if set; otherwise
+  * every secrets/<address>.toml in the repo.
 
-from lib import EmailRFC822, MailClient, State
+Which mailboxes run: the intersection of the mailboxes the server advertises
+and the `mailboxes` list in that address's imap config.
 
-class EmailAddress:
-    def __init__(self, email_address):
-        self.name = email_address
-        self.client = MailClient(email_address)
-        self.config = self.client.config
-        self.as_path = Path(email_address)
+Run it directly with:
+    ./sync_all.py
+    IMAP_SYNC_ADDRESSES=me@example.com ./sync_all.py
+"""
 
-class Sync:
-    def __init__(self, email_address: EmailAddress):
-        self.email_address = email_address
+import os
+import sys
+import traceback
 
-    @cached_property
-    def mailboxes(self):
-        mailbox_names = [mbox["name"].decode() for mbox in self.email_address.client.mailboxes]
-        return [mbox for mbox in mailbox_names if mbox in self.email_address.config.imap["mailboxes"]]
-
-    def validate_unique_mailboxes(self):
-        imap_names = [mbox["name"].decode() for mbox in self.mailboxes]
-        s3_names = [SyncMailbox.get_mailbox_s3_name(name) for name in imap_names]
-
-        if len(set(imap_names)) != len(set(s3_names)):
-            mapping = {"imap_names": imap_names, "s3_names": s3_names}
-            raise RuntimeError(f"Mailbox names for S3 are not unique: {json.dumps(mapping)}")
-
-    def sync_all(self):
-        self.validate_unique_mailboxes()
-        # for mailbox in self.mailboxes:
-        #     SyncMailbox(self.email_address, mailbox).run()
+from lib.config import SECRETS_DIR
+from lib.sync_mailbox import EmailAddress, SyncMailbox
 
 
-class SyncMailbox:
-    @staticmethod
-    def get_mailbox_s3_name(name):
-        name = re.sub(r"['\"\[\]]", "", name)
-        name = name.replace(" ", "_")
-        name = re.sub(r"[^0-9a-zA-Z_-]", "-", name)
-        return name
+def configured_addresses() -> list[str]:
+    raw = os.environ.get("IMAP_SYNC_ADDRESSES", "")
+    if raw.strip():
+        return [item.strip() for item in raw.replace("\n", ",").split(",") if item.strip()]
+    return sorted(path.name.removesuffix(".toml") for path in SECRETS_DIR.glob("*.toml"))
 
-    def __init__(self, email_address: EmailAddress, mailbox="INBOX"):
-        self.email_address = email_address
-        self.mailbox = mailbox
-        self.client = email_address.client
-        self.config = self.client.config
-        self.state = State(self.config, mailbox)
-        self.store = self.config.store
-        self.mailbox_s3_name = self.get_mailbox_s3_name(mailbox)
 
-    def run(self):
-        self.client.select(self.mailbox)
+def mailboxes_for(address: EmailAddress) -> list[str]:
+    """Server mailboxes that this address is configured to sync."""
+    wanted = address.config.imap["mailboxes"]
+    advertised = [mailbox["name"].decode() for mailbox in address.client.mailboxes]
+    return [name for name in advertised if name in wanted]
 
-        uidvalidity = self.client.uidvalidity(self.mailbox)
-        if self.state.uidvalidity() != uidvalidity:
-            print("WARNING: uidvalidity has updated!")
-            self.state.uidvalidity(uidvalidity)
-            self.state.last_processed_uid(self.state.defaults["last_processed_uid"])
 
-        uids = self.client.uids(self.state.last_processed_uid() + 1)
-        for event, mail in self.loop_uids(uids):
-            if event == "email":
-                log_info = {
-                    "email_address": self.email_address.name,
-                    "mailbox": self.mailbox,
-                    "uid": mail.uid,
-                    "size_uncompressed": mail.size,
-                    "size_compressed": mail.size_compressed,
-                }
-                print(f"Processing: {json.dumps(log_info)}")
-                self.write_to_dest(mail)
-                self.update_local_state(mail)
-            elif event == "batch_complete":
-                self.state.push_to_remote()
+def validate_unique_s3_names(mailbox_names: list[str]) -> None:
+    """Two IMAP names must never collapse to the same S3 prefix."""
+    s3_names = [SyncMailbox.get_mailbox_s3_name(name) for name in mailbox_names]
+    if len(set(s3_names)) != len(set(mailbox_names)):
+        mapping = dict(zip(mailbox_names, s3_names))
+        raise RuntimeError(f"Mailbox names for S3 are not unique: {mapping}")
 
-    def write_to_dest(self, mail: EmailRFC822):
-        stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))
-        mbox_path = self.email_address.as_path / self.mailbox_s3_name
 
-        mail_path = mbox_path / "email" / stem_path
-        meta_path = mbox_path / "metadata" / stem_path
+def sync_address(name: str) -> None:
+    print(f"=== {name}", flush=True)
+    address = EmailAddress(name)
+    try:
+        mailbox_names = mailboxes_for(address)
+        validate_unique_s3_names(mailbox_names)
+        if not mailbox_names:
+            print(f"WARNING: no configured mailboxes matched for {name}", flush=True)
+        for mailbox in mailbox_names:
+            print(f"--- {name} {mailbox}", flush=True)
+            SyncMailbox(address, mailbox).run()
+    finally:
+        try:
+            address.client.logout()
+        except Exception:
+            pass
 
-        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed)
-        self.store.write(f"{meta_path}.json", json.dumps(mail.metadata))
 
-    def update_local_state(self, mail: EmailRFC822):
-        self.state.message_count(self.state.message_count() + 1)
-        self.state.uncompressed_bytes(self.state.uncompressed_bytes() + mail.size)
-        self.state.compressed_bytes(self.state.compressed_bytes() + mail.size_compressed)
-        self.state.last_processed_uid(mail.uid)
+def main() -> int:
+    addresses = configured_addresses()
+    if not addresses:
+        print(f"ERROR: no addresses configured (looked in {SECRETS_DIR})", file=sys.stderr)
+        return 1
 
-    def loop_uids(self, uids: list[bytes]):
-        for i in range(0, len(uids), self.config.batch_size):
-            group = uids[i:i+self.config.batch_size]
-            uid_range = (group[0] + b":" + group[-1]).decode()
-            data = self.client.call("UID", "FETCH", uid_range, "(UID INTERNALDATE BODY[])")
-            for item in data:
-                if not isinstance(item, tuple):
-                    continue
-                yield "email", EmailRFC822(self.config, *item)
-            yield "batch_complete", None
+    failed = []
+    for name in addresses:
+        try:
+            sync_address(name)
+        except Exception:
+            # Keep going: one broken mailbox should not stop the others.
+            traceback.print_exc()
+            failed.append(name)
 
-# while True:
-#     connect()
-#     uids = get_next_uids(last_uid)
-#     for batch in batches(uids, size=50):
-#         fetch(batch)
-#         store_emails(batch)
-#         update_checkpoint(batch)
-#     logout()
+    if failed:
+        print(f"ERROR: sync failed for: {', '.join(failed)}", file=sys.stderr)
+        return 1
+
+    print(f"Synced {len(addresses)} address(es) successfully", flush=True)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
