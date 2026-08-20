@@ -50,13 +50,11 @@ class MailboxArchiver:
 
     def run_once(self) -> dict | None:
         """Build at most one archive. Returns a summary, or None if nothing to do."""
-        objects, enough = self.select_objects()
+        objects = self.select_objects()
         pending_bytes = sum(obj["Size"] for obj in objects)
+        if pending_bytes == 0: return
 
-        if not objects:
-            return None
-
-        if not enough and not self.config.force:
+        if not pending_bytes < self.config.min_bytes and not self.config.force:
             print(
                 f"{self.mailbox_prefix}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
                 f"(< {human_bytes(self.config.min_bytes)}), waiting"
@@ -71,13 +69,9 @@ class MailboxArchiver:
         result = self.builder.build(objects, tar_key, should_continue=self.deadline.ok)
 
         if not result["members"]:
-            # Ran out of time before writing anything; the (empty) tar is harmless
-            # but we do not advance the checkpoint.
-            print(f"{self.mailbox_prefix}: no members written, leaving checkpoint untouched")
+            print(f"{self.mailbox_prefix}: no members written, ran out of time, leaving checkpoint untouched")
             return None
 
-        # Checkpoint BEFORE deleting: if the delete fails we only leak objects
-        # that are already safely inside the tar, never lose data.
         self.state.record_archive(
             last_key=result["members"][-1]["key"],
             objects=len(result["members"]),
@@ -105,41 +99,26 @@ class MailboxArchiver:
             "last_archived_key": self.state.last_archived_key,
         }
 
-    def select_objects(self) -> tuple[list[dict], bool]:
-        """Return (objects, hit_target) for the next bundle.
-
-        Objects are taken in key order (which is chronological given the
-        ``%Y/%m/%d/%H-%M-%S`` path template) starting right after
-        ``last_archived_key``, until the target size is reached.
-        """
+    def select_objects(self) -> list[dict]:
+        """Return (objects, hit_target) for the next bundle."""
         cutoff = time.time() - self.config.min_age_seconds
         objects: list[dict] = []
         pending_bytes = 0
-        hit_target = False
 
         for obj in self.s3.list_objects(self.source_prefix, start_after=self.state.last_archived_key):
             key = obj["Key"]
             if not key.endswith(self.config.source_suffix):
                 continue
             if obj["LastModified"].timestamp() > cutoff:
-                # Too fresh: the uploader may still be working near this key.
-                # Stop here rather than skipping, so the checkpoint stays contiguous.
                 break
-            if obj["Size"] == 0:
-                print(f"WARNING: skipping empty object {key}")
-                continue
 
             objects.append(obj)
             pending_bytes += obj["Size"]
 
-            if pending_bytes >= self.config.target_bytes:
-                hit_target = True
-            if pending_bytes >= self.config.max_bytes or len(objects) >= self.config.max_objects_per_archive:
-                break
-            if hit_target:
+            if pending_bytes >= self.config.target_bytes or len(objects) >= self.config.max_objects_per_archive:
                 break
 
-        return objects, pending_bytes >= self.config.min_bytes
+        return objects
 
     def delete_sources(self, keys: list[str]) -> tuple[int, list[dict]]:
         if not self.config.delete_sources:
