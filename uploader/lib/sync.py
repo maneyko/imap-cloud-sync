@@ -1,9 +1,3 @@
-#!/usr/bin/env -S uv run
-# /// script
-# dependencies = ["boto3"]
-# requires-python = ">=3.14"
-# ///
-
 # exec(open("main.py").read())
 # from main import EmailAddress, SyncMailbox; addr = EmailAddress("me@example.com"); mbox = SyncMailbox(addr)
 
@@ -23,8 +17,8 @@ class EmailAddress:
         self.as_path = Path(email_address)
 
 class Sync:
-    def __init__(self, email_address: EmailAddress):
-        self.email_address = email_address
+    def __init__(self, email_address: str):
+        self.email_address = EmailAddress(email_address)
 
     @cached_property
     def mailboxes(self):
@@ -32,6 +26,7 @@ class Sync:
         return [mbox for mbox in mailbox_names if mbox in self.email_address.config.imap["mailboxes"]]
 
     def validate_unique_mailboxes(self):
+        "Not really necessary since the mailbox names are stated explicitly."
         imap_names = [mbox["name"].decode() for mbox in self.mailboxes]
         s3_names = [SyncMailbox.get_mailbox_s3_name(name) for name in imap_names]
 
@@ -39,20 +34,20 @@ class Sync:
             mapping = {"imap_names": imap_names, "s3_names": s3_names}
             raise RuntimeError(f"Mailbox names for S3 are not unique: {json.dumps(mapping)}")
 
-    def sync_all(self):
-        self.validate_unique_mailboxes()
-        # for mailbox in self.mailboxes:
-        #     SyncMailbox(self.email_address, mailbox).run()
+    def run(self):
+        "Sync all mailboxes for the email address."
+        try:
+            # self.validate_unique_mailboxes()
+            for mailbox in self.mailboxes:
+                SyncMailbox(self.email_address, mailbox).run()
+        finally:
+            try:
+                self.email_address.client.logout()
+            except Exception:
+                pass
 
 
 class SyncMailbox:
-    @staticmethod
-    def get_mailbox_s3_name(name):
-        name = re.sub(r"['\"\[\]]", "", name)
-        name = name.replace(" ", "_")
-        name = re.sub(r"[^0-9a-zA-Z_-]", "-", name)
-        return name
-
     def __init__(self, email_address: EmailAddress, mailbox="INBOX"):
         self.email_address = email_address
         self.mailbox = mailbox
@@ -113,6 +108,13 @@ class SyncMailbox:
                     continue
                 yield "email", EmailRFC822(self.config, *item)
             yield "batch_complete", None
+
+    @staticmethod
+    def get_mailbox_s3_name(name):
+        name = re.sub(r"['\"\[\]]", "", name)
+        name = name.replace(" ", "_")
+        name = re.sub(r"[^0-9a-zA-Z_-]", "-", name)
+        return name
 
 # while True:
 #     connect()

@@ -5,7 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 from compression import zstd  # Python 3.14 stdlib
 
-from lib_lambda.upload import MultipartUploadStream
+from lib.upload import MultipartUploadStream
 
 
 class TarBundleBuilder:
@@ -47,12 +47,12 @@ class TarBundleBuilder:
             extra_args={"ContentType": "application/x-tar"},
         )
         try:
-            with ThreadPoolExecutor(max_workers=max(1, self.config.prefetch)) as pool:
+            with ThreadPoolExecutor(max_workers=1) as pool:
                 fetches = deque()
                 pending = iter(objects)
 
                 def top_up():
-                    while len(fetches) < max(1, self.config.prefetch):
+                    while len(fetches) < 1:
                         obj = next(pending, None)
                         if obj is None:
                             break

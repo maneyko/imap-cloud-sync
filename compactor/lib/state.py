@@ -68,13 +68,15 @@ class ArchiveState:
         return self
 
     def record_archive(self, *, last_key: str, objects: int, size_bytes: int):
-        self._state["last_archived_key"] = last_key
-        self._state["next_archive_number"] = self.next_archive_number + 1
-        self._state["archive_count"] = self._state["archive_count"] + 1
-        self._state["archived_objects"] = self._state["archived_objects"] + objects
-        self._state["archived_bytes"] = self._state["archived_bytes"] + size_bytes
-        self._state["pending_objects"] = 0
-        self._state["pending_bytes"] = 0
+        self._state.update({
+            "last_archived_key":   last_key,
+            "next_archive_number": self.next_archive_number + 1,
+            "archive_count":       self._state["archive_count"] + 1,
+            "archived_objects":    self._state["archived_objects"] + objects,
+            "archived_bytes":      self._state["archived_bytes"] + size_bytes,
+            "pending_objects":     0,
+            "pending_bytes":       0,
+        })
         return self
 
     def record_pending(self, objects: int, size_bytes: int):
@@ -89,6 +91,3 @@ class ArchiveState:
     @property
     def next_archive_number(self) -> int:
         return self._state["next_archive_number"]
-
-    def as_dict(self):
-        return dict(self._state)

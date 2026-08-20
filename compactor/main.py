@@ -1,8 +1,10 @@
-#!/usr/bin/env -S uv run
+#!/usr/bin/env -S uv run --script
+
 # /// script
 # dependencies = ["boto3"]
 # requires-python = ">=3.14"
 # ///
+
 """S3 archiver Lambda entry point.
 
 Rolls the individual hot ``*.eml.zst`` objects produced by ``main.py`` into
@@ -26,8 +28,8 @@ Algorithm (per mailbox root):
 
 Run locally against the real bucket (read-only first!)::
 
-    AWS_PROFILE=personal ./main_lambda.py --dry-run
-    AWS_PROFILE=personal ./main_lambda.py --prefix 'me@example.com/INBOX/'
+    AWS_PROFILE=personal ./main.py --dry-run
+    AWS_PROFILE=personal ./main.py --prefix 'me@example.com/INBOX/'
 
 Suggested Lambda config: 512-1024 MB memory, 15 min timeout, EventBridge daily
 schedule, plus a lifecycle rule aborting incomplete multipart uploads after a
@@ -37,7 +39,7 @@ day or two.
 import json
 import sys
 
-from lib_lambda import ArchiveConfig, Archiver
+from lib import ArchiveConfig, Archiver
 
 
 def lambda_handler(event=None, context=None):

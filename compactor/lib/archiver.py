@@ -1,9 +1,9 @@
 import time
 
-from lib_lambda.config import IGNORED_TOP_LEVEL_PREFIXES
-from lib_lambda.s3util import S3, human_bytes
-from lib_lambda.state import ArchiveState
-from lib_lambda.tar_builder import TarBundleBuilder
+from lib.config import IGNORED_TOP_LEVEL_PREFIXES
+from lib.s3util import S3, human_bytes
+from lib.state import ArchiveState
+from lib.tar_builder import TarBundleBuilder
 
 
 class Deadline:
@@ -26,16 +26,16 @@ class Deadline:
         return time.monotonic() - self.started
 
 
-class PrefixArchiver:
+class MailboxArchiver:
     """Archives one "<address>/<mailbox>/" root."""
 
-    def __init__(self, s3: S3, config, prefix_root: str, deadline: Deadline | None = None):
+    def __init__(self, s3: S3, config, mailbox_prefix: str, deadline: Deadline):
         self.s3 = s3
         self.config = config
-        self.prefix_root = prefix_root
-        self.source_prefix = config.source_prefix(prefix_root)
-        self.deadline = deadline or Deadline()
-        self.state = ArchiveState(s3, config.state_key(prefix_root), self.source_prefix)
+        self.mailbox_prefix = mailbox_prefix
+        self.source_prefix = config.source_prefix(mailbox_prefix)
+        self.deadline = deadline
+        self.state = ArchiveState(s3, config.state_key(mailbox_prefix), self.source_prefix)
         self.builder = TarBundleBuilder(s3, config, source_prefix=self.source_prefix)
 
     # -- step 1 & 2: list objects after the checkpoint, accumulate ---------
@@ -88,7 +88,7 @@ class PrefixArchiver:
 
         if not enough and not self.config.force:
             print(
-                f"{self.prefix_root}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
+                f"{self.mailbox_prefix}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
                 f"(< {human_bytes(self.config.min_bytes)}), waiting"
             )
             if not self.config.dry_run:
@@ -96,25 +96,25 @@ class PrefixArchiver:
             return None
 
         number = self.state.next_archive_number
-        tar_key = self.config.archive_key(self.prefix_root, number)
+        tar_key = self.config.archive_key(self.mailbox_prefix, number)
 
         if self.config.dry_run:
             print(f"DRY RUN: would bundle {len(objects):,} objects / {human_bytes(pending_bytes)} into {tar_key}")
             return {
-                "prefix": self.prefix_root,
+                "prefix": self.mailbox_prefix,
                 "tar_key": tar_key,
                 "objects": len(objects),
                 "source_bytes": pending_bytes,
                 "dry_run": True,
             }
 
-        print(f"{self.prefix_root}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
+        print(f"{self.mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
         result = self.builder.build(objects, tar_key, should_continue=self.deadline.ok)
 
         if not result["members"]:
             # Ran out of time before writing anything; the (empty) tar is harmless
             # but we do not advance the checkpoint.
-            print(f"{self.prefix_root}: no members written, leaving checkpoint untouched")
+            print(f"{self.mailbox_prefix}: no members written, leaving checkpoint untouched")
             return None
 
         # Checkpoint BEFORE deleting: if the delete fails we only leak objects
@@ -128,13 +128,13 @@ class PrefixArchiver:
         deleted, errors = self.delete_sources(result["keys"])
 
         print(
-            f"{self.prefix_root}: wrote {tar_key} "
+            f"{self.mailbox_prefix}: wrote {tar_key} "
             f"({human_bytes(result['tar_bytes'])}, {result['parts']} parts, {len(result['members']):,} members), "
             f"deleted {deleted:,} source objects"
         )
 
         return {
-            "prefix": self.prefix_root,
+            "prefix": self.mailbox_prefix,
             "tar_key": tar_key,
             "manifest_key": result.get("manifest_key"),
             "storage_class": self.config.storage_class,
@@ -148,7 +148,7 @@ class PrefixArchiver:
 
     def delete_sources(self, keys: list[str]) -> tuple[int, list[dict]]:
         if not self.config.delete_sources:
-            print(f"{self.prefix_root}: delete_sources disabled, keeping {len(keys):,} source objects")
+            print(f"{self.mailbox_prefix}: delete_sources disabled, keeping {len(keys):,} source objects")
             return 0, []
         errors = self.s3.delete_keys(keys)
         for error in errors[:10]:
@@ -173,12 +173,12 @@ class PrefixArchiver:
 class Archiver:
     """Discovers mailbox roots and archives each of them."""
 
-    def __init__(self, config, context=None, s3: S3 | None = None):
+    def __init__(self, config, context=None):
         self.config = config
-        self.s3 = s3 or S3(config.bucket)
+        self.s3 = S3(config.bucket)
         self.deadline = Deadline(context, config.time_reserve_ms)
 
-    def discover_prefixes(self) -> list[str]:
+    def discover_mailboxes(self) -> list[str]:
         """Find every "<address>/<mailbox>/" root that has hot objects."""
         if self.config.prefixes:
             return [prefix if prefix.endswith("/") else prefix + "/" for prefix in self.config.prefixes]
@@ -203,14 +203,14 @@ class Archiver:
             "tar_bytes": 0,
         }
 
-        for prefix_root in self.discover_prefixes():
+        for mailbox_prefix in self.discover_mailboxes():
             if not self.deadline.ok():
                 print(f"Stopping early with {self.deadline.remaining_ms() / 1000:.0f}s left before timeout")
                 summary["stopped_early"] = True
                 break
 
-            summary["prefixes"].append(prefix_root)
-            archiver = PrefixArchiver(self.s3, self.config, prefix_root, self.deadline)
+            summary["prefixes"].append(mailbox_prefix)
+            archiver = MailboxArchiver(self.s3, self.config, mailbox_prefix, self.deadline)
             for result in archiver.run():
                 summary["archives"].append(result)
                 summary["objects"] += result["objects"]

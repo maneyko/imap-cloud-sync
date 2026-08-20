@@ -22,7 +22,11 @@ brew install zstd
 s3_client = None
 try:
     import boto3
-    s3_client = boto3.client("s3")
+    import platform
+    aws_opts = {}
+    if platform.uname().system == "Darwin":
+        aws_opts["profile_name"] = "personal"
+    s3_client = boto3.Session(**aws_opts).client("s3")
 except ModuleNotFoundError:
     try:
         subprocess.run(["aws", "--version"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

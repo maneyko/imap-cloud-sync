@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic IMAP to S3 sync (imap-sync)
+
+[Timer]
+Unit=imap-sync.service
+OnCalendar=*:0/30
+RandomizedDelaySec=5m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

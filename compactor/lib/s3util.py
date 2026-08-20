@@ -1,6 +1,9 @@
 import boto3
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
+import platform
+
+
 
 
 def human_bytes(num: float) -> str:
@@ -15,13 +18,10 @@ class S3:
 
     def __init__(self, bucket: str, client=None):
         self.bucket = bucket
-        self.client = client or boto3.client(
-            "s3",
-            config=BotoConfig(
-                retries={"max_attempts": 10, "mode": "standard"},
-                max_pool_connections=32,
-            ),
-        )
+        aws_opts = {}
+        if platform.uname().system == "Darwin":
+            aws_opts["profile_name"] = "personal"
+        self.client = boto3.Session(**aws_opts).client("s3")
 
     # -- listing ---------------------------------------------------------
 
@@ -45,6 +45,7 @@ class S3:
     # -- objects ---------------------------------------------------------
 
     def get_body(self, key: str) -> bytes:
+        "Unused"
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
     def get_json(self, key: str):
@@ -61,6 +62,7 @@ class S3:
         return json.loads(response["Body"].read()), response["ETag"]
 
     def head(self, key: str):
+        "Unused"
         return self.client.head_object(Bucket=self.bucket, Key=key)
 
     def put(self, key: str, body: bytes, etag_match: str | None = None, **kwargs):

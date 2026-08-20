@@ -1,0 +1,8 @@
+[Unit]
+Description=Sync IMAP mailboxes to S3 (imap-sync)
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=imap-sync
+ExecStart=/opt/imap-sync/main.py
