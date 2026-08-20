@@ -36,12 +36,8 @@ class ArchiveConfig:
 
     bucket: str = DEFAULT_BUCKET
 
-    # Roll up once this many bytes of hot objects have accumulated.
-    target_bytes: int = 250 * MiB
     # Never build a tar smaller than this (unless ``force`` is set).
     min_bytes: int = 250 * MiB
-    # Hard stop for a single tar so a huge backlog is split into several files.
-    max_bytes: int = 4096 * MiB
     max_objects_per_archive: int = 200_000
 
     # Multipart part size. RAM usage is roughly one part plus the prefetch queue.
@@ -58,7 +54,6 @@ class ArchiveConfig:
     storage_class: str = "DEEP_ARCHIVE"
     # Manifests stay in STANDARD so bundle contents are searchable without a restore.
     manifest_storage_class: str = "STANDARD"
-    write_manifest: bool = True
 
     # Skip objects younger than this, so we never race the uploader.
     min_age_seconds: int = 3600
@@ -68,11 +63,9 @@ class ArchiveConfig:
     # Only archive these addresses when auto-discovering (empty means all).
     addresses: list[str] = field(default_factory=list)
 
-    max_archives_per_run: int = 4
     # Stop starting/continuing work when less than this much Lambda time is left.
     time_reserve_ms: int = 90_000
 
-    delete_sources: bool = True
     # Build an under-sized tar anyway (useful for a manual final flush).
     force: bool = False
 
@@ -80,9 +73,7 @@ class ArchiveConfig:
     def from_env(cls):
         return cls(
             bucket=os.environ.get("ARCHIVE_BUCKET", DEFAULT_BUCKET),
-            target_bytes=_env_int("ARCHIVE_TARGET_BYTES", 250 * MiB),
-            min_bytes=_env_int("ARCHIVE_MIN_BYTES", _env_int("ARCHIVE_TARGET_BYTES", 250 * MiB)),
-            max_bytes=_env_int("ARCHIVE_MAX_BYTES", 4096 * MiB),
+            min_bytes=_env_int("ARCHIVE_MIN_BYTES", 250 * MiB),
             max_objects_per_archive=_env_int("ARCHIVE_MAX_OBJECTS", 200_000),
             part_size=_env_int("ARCHIVE_PART_SIZE", 16 * MiB),
             prefetch=_env_int("ARCHIVE_PREFETCH", 8),
@@ -91,11 +82,9 @@ class ArchiveConfig:
             archive_subprefix=os.environ.get("ARCHIVE_SUBPREFIX", "archive/"),
             storage_class=os.environ.get("ARCHIVE_STORAGE_CLASS", "DEEP_ARCHIVE"),
             manifest_storage_class=os.environ.get("ARCHIVE_MANIFEST_STORAGE_CLASS", "STANDARD"),
-            write_manifest=_env_bool("ARCHIVE_WRITE_MANIFEST", True),
             min_age_seconds=_env_int("ARCHIVE_MIN_AGE_SECONDS", 3600),
             prefixes=_env_list("ARCHIVE_PREFIXES"),
             addresses=_env_list("ARCHIVE_ADDRESSES"),
-            max_archives_per_run=_env_int("ARCHIVE_MAX_ARCHIVES_PER_RUN", 4),
             time_reserve_ms=_env_int("ARCHIVE_TIME_RESERVE_MS", 90_000),
             delete_sources=_env_bool("ARCHIVE_DELETE_SOURCES", True),
             force=_env_bool("ARCHIVE_FORCE", False),
@@ -113,8 +102,6 @@ class ArchiveConfig:
     def validate(self):
         if self.part_size < 5 * MiB:
             raise ValueError(f"part_size must be >= 5 MiB (S3 multipart minimum), got {self.part_size}")
-        if self.max_bytes < self.min_bytes:
-            raise ValueError("max_bytes must be >= min_bytes")
         if not self.bucket:
             raise ValueError("bucket is required")
         return self

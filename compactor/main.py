@@ -60,8 +60,6 @@ def main(argv):
                 event["dry_run"] = True
             case "--force":
                 event["force"] = True
-            case "--no-delete":
-                event["delete_sources"] = False
             case "--prefix":
                 event.setdefault("prefixes", []).append(args.pop(0))
             case "--bucket":
@@ -70,8 +68,6 @@ def main(argv):
                 mib = int(args.pop(0)) * 1024 * 1024
                 event["target_bytes"] = mib
                 event["min_bytes"] = mib
-            case "--max-archives":
-                event["max_archives_per_run"] = int(args.pop(0))
             case "-h" | "--help":
                 print(__doc__)
                 return 0

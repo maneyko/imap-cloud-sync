@@ -41,7 +41,7 @@ class MailboxArchiver:
     def run(self) -> list[dict]:
         """Build archives for this prefix until it is drained or limits are hit."""
         results = []
-        while len(results) < self.config.max_archives_per_run and self.deadline.ok():
+        while self.deadline.ok():
             result = self.run_once()
             if result is None:
                 break
@@ -62,8 +62,7 @@ class MailboxArchiver:
             self.state.record_pending(len(objects), pending_bytes).save()
             return None
 
-        number = self.state.next_archive_number
-        tar_key = self.config.archive_key(self.mailbox_prefix, number)
+        tar_key = self.config.archive_key(self.mailbox_prefix, self.state.next_archive_number)
 
         print(f"{self.mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
         result = self.builder.build(objects, tar_key, should_continue=self.deadline.ok)
@@ -115,15 +114,12 @@ class MailboxArchiver:
             objects.append(obj)
             pending_bytes += obj["Size"]
 
-            if pending_bytes >= self.config.target_bytes or len(objects) >= self.config.max_objects_per_archive:
+            if pending_bytes >= self.config.min_bytes or len(objects) >= self.config.max_objects_per_archive:
                 break
 
         return objects
 
     def delete_sources(self, keys: list[str]) -> tuple[int, list[dict]]:
-        if not self.config.delete_sources:
-            print(f"{self.mailbox_prefix}: delete_sources disabled, keeping {len(keys):,} source objects")
-            return 0, []
         errors = self.s3.delete_keys(keys)
         for error in errors[:10]:
             print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")

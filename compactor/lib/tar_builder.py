@@ -9,26 +9,10 @@ from lib.upload import MultipartUploadStream
 
 
 class TarBundleBuilder:
-    """Streams a set of S3 objects into a single ``.tar`` object in S3.
-
-    Source objects are fetched by a small thread pool that runs a bounded
-    number of GETs ahead of the tar writer, so the Lambda's memory footprint is
-    ``part_size + prefetch * avg_object_size`` (a few tens of MiB), never the
-    size of the finished archive.
-
-    The ``.eml.zst`` payloads are stored in the tar uncompressed (they are
-    already zstd-compressed) which keeps individual members extractable with
-    a ranged read of the tar once it has been restored.
-    """
-
     def __init__(self, s3, config, *, source_prefix: str):
         self.s3 = s3
         self.config = config
         self.source_prefix = source_prefix
-
-    def member_name(self, key: str) -> str:
-        """Key relative to the source prefix, e.g. 2026/08/06/21-14-20.…eml.zst."""
-        return key.removeprefix(self.source_prefix)
 
     def build(self, objects: list[dict], tar_key: str, *, should_continue=None) -> dict:
         """Write ``objects`` into ``tar_key``.
@@ -88,7 +72,7 @@ class TarBundleBuilder:
             "source_bytes": sum(m["size"] for m in members),
             "keys": [m["key"] for m in members],
         }
-        if members and self.config.write_manifest:
+        if members:
             result["manifest_key"] = self.write_manifest(tar_key, result)
         return result
 
@@ -109,6 +93,10 @@ class TarBundleBuilder:
             "etag": obj.get("ETag", "").strip('"'),
             "last_modified": obj["LastModified"].isoformat(),
         }
+
+    def member_name(self, key: str) -> str:
+        """Key relative to the source prefix, e.g. 2026/08/06/21-14-20.…eml.zst."""
+        return key.removeprefix(self.source_prefix)
 
     def write_manifest(self, tar_key: str, result: dict) -> str:
         """Store a JSONL listing of the bundle contents next to the tar.
