@@ -73,7 +73,6 @@ class ArchiveConfig:
     time_reserve_ms: int = 90_000
 
     delete_sources: bool = True
-    dry_run: bool = False
     # Build an under-sized tar anyway (useful for a manual final flush).
     force: bool = False
 
@@ -99,7 +98,6 @@ class ArchiveConfig:
             max_archives_per_run=_env_int("ARCHIVE_MAX_ARCHIVES_PER_RUN", 4),
             time_reserve_ms=_env_int("ARCHIVE_TIME_RESERVE_MS", 90_000),
             delete_sources=_env_bool("ARCHIVE_DELETE_SOURCES", True),
-            dry_run=_env_bool("ARCHIVE_DRY_RUN", False),
             force=_env_bool("ARCHIVE_FORCE", False),
         )
 

@@ -46,10 +46,6 @@ class MailboxArchiver:
             if result is None:
                 break
             results.append(result)
-            if self.config.dry_run:
-                # State never advances in a dry run, so a second pass would
-                # just report the same objects again.
-                break
         return results
 
     def run_once(self) -> dict | None:
@@ -65,22 +61,11 @@ class MailboxArchiver:
                 f"{self.mailbox_prefix}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
                 f"(< {human_bytes(self.config.min_bytes)}), waiting"
             )
-            if not self.config.dry_run:
-                self.state.record_pending(len(objects), pending_bytes).save()
+            self.state.record_pending(len(objects), pending_bytes).save()
             return None
 
         number = self.state.next_archive_number
         tar_key = self.config.archive_key(self.mailbox_prefix, number)
-
-        if self.config.dry_run:
-            print(f"DRY RUN: would bundle {len(objects):,} objects / {human_bytes(pending_bytes)} into {tar_key}")
-            return {
-                "prefix": self.mailbox_prefix,
-                "tar_key": tar_key,
-                "objects": len(objects),
-                "source_bytes": pending_bytes,
-                "dry_run": True,
-            }
 
         print(f"{self.mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
         result = self.builder.build(objects, tar_key, should_continue=self.deadline.ok)
