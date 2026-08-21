@@ -14,7 +14,7 @@ Per mailbox root "<address>/<mailbox>/"::
     .../archive/archive-000042.tar                               <- bundle (DEEP_ARCHIVE)
     .../archive/archive-000042.manifest.jsonl.zst                <- contents (STANDARD)
 
-Once a mailbox has MIN_ARCHIVE_BYTES of email, the oldest objects are streamed
+Once a mailbox has {min_archive_bytes} of email, the oldest objects are streamed
 into the next tar and then deleted, so "email/" only ever holds what has not
 been archived yet. Settings live in lib/config.py; there are no arguments and
 the Lambda event is ignored.

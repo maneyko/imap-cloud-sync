@@ -1,15 +1,7 @@
 import re
 import time
 
-from lib.config import (
-    ARCHIVE_SUBPREFIX,
-    BUCKET,
-    MIN_AGE_SECONDS,
-    MIN_ARCHIVE_BYTES,
-    SOURCE_SUBPREFIX,
-    SOURCE_SUFFIX,
-    TIME_RESERVE_MS,
-)
+from lib.config import Settings
 from lib.s3util import S3, human_bytes
 from lib.tar_builder import TarBuilder
 
@@ -23,21 +15,21 @@ class Archiver:
     """
 
     def __init__(self, context=None):
-        self.s3 = S3(BUCKET)
+        self.s3 = S3(Settings.bucket)
         self.context = context
         self.started = time.monotonic()
 
     def run(self) -> dict:
         archives = []
         for mailbox_prefix in self.discover_mailboxes():
-            while self.time_left_ms() > TIME_RESERVE_MS:
+            while self.time_left_ms() > Settings.time_reserve_ms:
                 result = self.archive_once(mailbox_prefix)
                 if result is None:
                     break
                 archives.append(result)
 
         return {
-            "bucket": BUCKET,
+            "bucket": Settings.bucket,
             "archives": archives,
             "objects": sum(archive["objects"] for archive in archives),
             "source_bytes": sum(archive["source_bytes"] for archive in archives),
@@ -47,18 +39,18 @@ class Archiver:
 
     def archive_once(self, mailbox_prefix: str) -> dict | None:
         """Build one tar for this mailbox, or return None if there is not enough email."""
-        source_prefix = mailbox_prefix + SOURCE_SUBPREFIX
+        source_prefix = mailbox_prefix + Settings.source_subprefix
         objects = self.select_objects(source_prefix)
         pending_bytes = sum(obj["Size"] for obj in objects)
 
-        if pending_bytes < MIN_ARCHIVE_BYTES:
+        if pending_bytes < Settings.min_archive_mib*1024**2:
             print(
                 f"{mailbox_prefix}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
-                f"(< {human_bytes(MIN_ARCHIVE_BYTES)}), waiting"
+                f"(< {Settings.min_archive_mib} MiB), waiting"
             )
             return None
 
-        tar_key = f"{mailbox_prefix}{ARCHIVE_SUBPREFIX}archive-{self.next_archive_number(mailbox_prefix):06d}.tar"
+        tar_key = f"{mailbox_prefix}{Settings.archive_subprefix}archive-{self.next_archive_number(mailbox_prefix):06d}.tar"
         print(f"{mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
 
         result = TarBuilder(self.s3, source_prefix).build(objects, tar_key)
@@ -84,18 +76,18 @@ class Archiver:
 
     def select_objects(self, source_prefix: str) -> list[dict]:
         """The oldest objects worth up to one archive, skipping any the uploader may still be writing."""
-        cutoff = time.time() - MIN_AGE_SECONDS
+        cutoff = time.time() - Settings.min_age_seconds
         objects = []
         pending_bytes = 0
 
         for obj in self.s3.list_objects(source_prefix):
-            if not obj["Key"].endswith(SOURCE_SUFFIX):
+            if not obj["Key"].endswith(Settings.source_suffix):
                 continue
             if obj["LastModified"].timestamp() > cutoff:
                 break
             objects.append(obj)
             pending_bytes += obj["Size"]
-            if pending_bytes >= MIN_ARCHIVE_BYTES:
+            if pending_bytes >= Settings.min_archive_mib*1024**2:
                 break
 
         return objects
@@ -103,7 +95,7 @@ class Archiver:
     def next_archive_number(self, mailbox_prefix: str) -> int:
         numbers = (
             int(match.group(1))
-            for obj in self.s3.list_objects(mailbox_prefix + ARCHIVE_SUBPREFIX)
+            for obj in self.s3.list_objects(mailbox_prefix + Settings.archive_subprefix)
             if (match := re.search(r"archive-(\d+)\.tar$", obj["Key"]))
         )
         return max(numbers, default=0) + 1

@@ -1,0 +1,14 @@
+bucket = "my-mail-archive"
+
+source_suffix     = ".eml.zst"
+source_subprefix  = "email/"    # "{email_address}/{mailbox}/email/"
+archive_subprefix = "archive/"  # "{email_address}/{mailbox}/archive/"
+
+archive_storage_class  = "DEEP_ARCHIVE"
+manifest_storage_class = "STANDARD"
+
+min_archive_mib = 250
+# min_age_seconds = 3600
+min_age_seconds = 0
+part_size_mib   = 16
+time_reserve_ms = 300_000
