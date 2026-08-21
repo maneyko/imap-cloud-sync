@@ -17,9 +17,9 @@ class Archiver:
     def __init__(self, context=None):
         self.s3 = S3(Settings.bucket)
         self.context = context
-        self.started = time.monotonic()
 
     def run(self) -> dict:
+        time_started = time.monotonic()
         archives = []
         for mailbox_prefix in self.discover_mailboxes():
             while self.time_left_ms() > Settings.time_reserve_ms:
@@ -34,7 +34,7 @@ class Archiver:
             "objects": sum(archive["objects"] for archive in archives),
             "source_bytes": sum(archive["source_bytes"] for archive in archives),
             "tar_bytes": sum(archive["tar_bytes"] for archive in archives),
-            "elapsed_s": round(time.monotonic() - self.started, 1),
+            "elapsed_s": round(time.monotonic() - time_started, 1),
         }
 
     def archive_once(self, mailbox_prefix: str) -> dict | None:
