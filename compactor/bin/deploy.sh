@@ -12,11 +12,18 @@ BUCKET="my-lambdas"
 KEY="$lambda_name/function.zip"
 ZIP="dist/$lambda_name.zip"
 
+pyclean() {
+  find .        -type f -name '*.py[co]'    -delete
+  find . -depth -type d -name '__pycache__' -delete
+}
+
 d=dist/package
 rm -fr "$d" && mkdir -p "$d" && cd "$d"
 
 cp -r "$__DIR__"/lib "$__DIR__/"main.py .
 
+
+pyclean
 zip -r "$__DIR__/$ZIP" .
 cd "$OLDPWD" && rm -fr "$d"
 
@@ -28,8 +35,15 @@ fi
 checksum=$(sha256sum "$ZIP" | awk '{print $1}')
 
 aws s3api put-object \
-  --bucket "$BUCKET" --key "$KEY" --body "$ZIP" \
+  --bucket $BUCKET --key $KEY --body "$ZIP" \
   --content-type application/zip \
   --metadata "sha256=$checksum"
 
 echo "uploaded s3://$BUCKET/$KEY"
+
+aws lambda update-function-code \
+  --function-name $lambda_name \
+  --s3-bucket $BUCKET \
+  --s3-key $KEY
+
+echo "Lambda synced"
