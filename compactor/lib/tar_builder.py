@@ -3,7 +3,7 @@ import json
 import tarfile
 from compression import zstd  # Python 3.14 stdlib
 
-from lib.config import MANIFEST_STORAGE_CLASS, PART_SIZE, STORAGE_CLASS
+from lib.config import MANIFEST_STORAGE_CLASS, PART_SIZE, ARCHIVE_STORAGE_CLASS
 from lib.s3util import MultipartUploadStream
 
 
@@ -20,7 +20,7 @@ class TarBuilder:
         stream = MultipartUploadStream(
             self.s3, tar_key,
             part_size=PART_SIZE,
-            storage_class=STORAGE_CLASS,
+            storage_class=ARCHIVE_STORAGE_CLASS,
             content_type="application/x-tar",
         )
         try:
@@ -72,7 +72,7 @@ class TarBuilder:
             "type": "header",
             "tar_key": result["tar_key"],
             "source_prefix": self.source_prefix,
-            "storage_class": STORAGE_CLASS,
+            "storage_class": ARCHIVE_STORAGE_CLASS,
             "object_count": len(result["members"]),
             "source_bytes": result["source_bytes"],
             "tar_bytes": result["tar_bytes"],

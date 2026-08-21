@@ -28,9 +28,11 @@ class S3:
 
     def list_common_prefixes(self, prefix: str = ""):
         """Yield the immediate "directories" under ``prefix``."""
+        prefixes = []
         paginator = self.client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/"):
-            yield from (item["Prefix"] for item in page.get("CommonPrefixes", []))
+            prefixes.extend([item["Prefix"] for item in page.get("CommonPrefixes", [])])
+        return prefixes
 
     def get_body(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()

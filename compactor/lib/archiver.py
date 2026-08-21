@@ -108,11 +108,12 @@ class Archiver:
         )
         return max(numbers, default=0) + 1
 
-    def discover_mailboxes(self):
-        """Yield every "<address>/<mailbox>/" root in the bucket."""
+    def discover_mailboxes(self) -> list[str]:
+        mailboxes = []
         for address_prefix in self.s3.list_common_prefixes():
             if "@" in address_prefix:
-                yield from self.s3.list_common_prefixes(address_prefix)
+                mailboxes.extend(self.s3.list_common_prefixes(address_prefix))
+        return mailboxes
 
     def time_left_ms(self) -> float:
         if self.context is None:
