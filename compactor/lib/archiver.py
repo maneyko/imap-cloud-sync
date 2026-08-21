@@ -62,7 +62,7 @@ class Archiver:
         print(f"{mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
 
         result = TarBuilder(self.s3, source_prefix).build(objects, tar_key)
-        errors = list(self.s3.delete_keys(result["keys"]))
+        errors = self.s3.delete_keys(result["keys"])
         for error in errors[:10]:
             print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")
 

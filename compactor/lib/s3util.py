@@ -38,18 +38,16 @@ class S3:
     def put(self, key: str, body: bytes, **kwargs):
         return self.client.put_object(Bucket=self.bucket, Key=key, Body=body, **kwargs)
 
-    def delete_keys(self, keys: list[str]):
-        """Delete keys in batches of 1000, yielding the error dicts for any that failed.
-
-        This is a generator, so nothing is deleted until it is iterated.
-        """
+    def delete_keys(self, keys: list[str]) -> list[dict]:
+        errors = []
         for i in range(0, len(keys), 1000):
             batch = keys[i:i + 1000]
             response = self.client.delete_objects(
                 Bucket=self.bucket,
                 Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
             )
-            yield from response.get("Errors", [])
+            errors.extend(response.get("Errors", []))
+        return errors
 
 
 class MultipartUploadStream(io.RawIOBase):
