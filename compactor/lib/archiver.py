@@ -1,178 +1,123 @@
+import re
 import time
 
-from lib.config import IGNORED_TOP_LEVEL_PREFIXES
+from lib.config import (
+    ARCHIVE_SUBPREFIX,
+    BUCKET,
+    MIN_AGE_SECONDS,
+    MIN_ARCHIVE_BYTES,
+    SOURCE_SUBPREFIX,
+    SOURCE_SUFFIX,
+    TIME_RESERVE_MS,
+)
 from lib.s3util import S3, human_bytes
-from lib.state import ArchiveState
-from lib.tar_builder import TarBundleBuilder
+from lib.tar_builder import build_tar
 
 
-class Deadline:
-    """Wraps the Lambda context so the run stops well before it is killed."""
+def run(context=None) -> dict:
+    """Bundle every mailbox that has enough pending email into DEEP_ARCHIVE tars.
 
-    def __init__(self, context=None, reserve_ms: int = 90_000):
-        self.context = context
-        self.reserve_ms = reserve_ms
-        self.started = time.monotonic()
+    There is no checkpoint file: sources are deleted once they are inside a
+    tar, so whatever is left under "<address>/<mailbox>/email/" is exactly what
+    still needs archiving.
+    """
+    started = time.monotonic()
+    s3 = S3(BUCKET)
+    archives = []
 
-    def ok(self) -> bool:
-        return self.remaining_ms() > self.reserve_ms
-
-    def remaining_ms(self) -> float:
-        if hasattr(self.context, "get_remaining_time_in_millis"):
-            return self.context.get_remaining_time_in_millis()
-        return float("inf")
-
-    def elapsed_s(self) -> float:
-        return time.monotonic() - self.started
-
-
-class MailboxArchiver:
-    """Archives one "<address>/<mailbox>/" root."""
-
-    def __init__(self, s3: S3, config, mailbox_prefix: str, deadline: Deadline):
-        self.s3 = s3
-        self.config = config
-        self.mailbox_prefix = mailbox_prefix
-        self.source_prefix = config.source_prefix(mailbox_prefix)
-        self.deadline = deadline
-        self.state = ArchiveState(s3, config.state_key(mailbox_prefix), self.source_prefix)
-        self.builder = TarBundleBuilder(s3, config, source_prefix=self.source_prefix)
-
-    def run(self) -> list[dict]:
-        """Build archives for this prefix until it is drained or limits are hit."""
-        results = []
-        while self.deadline.ok():
-            result = self.run_once()
+    for mailbox_prefix in discover_mailboxes(s3):
+        while time_left_ms(context) > TIME_RESERVE_MS:
+            result = archive_once(s3, mailbox_prefix)
             if result is None:
                 break
-            results.append(result)
-        return results
+            archives.append(result)
 
-    def run_once(self) -> dict | None:
-        """Build at most one archive. Returns a summary, or None if nothing to do."""
-        objects = self.select_objects()
-        pending_bytes = sum(obj["Size"] for obj in objects)
-        if pending_bytes == 0: return
+    return {
+        "bucket": BUCKET,
+        "archives": archives,
+        "objects": sum(archive["objects"] for archive in archives),
+        "source_bytes": sum(archive["source_bytes"] for archive in archives),
+        "tar_bytes": sum(archive["tar_bytes"] for archive in archives),
+        "elapsed_s": round(time.monotonic() - started, 1),
+    }
 
-        if not pending_bytes < self.config.min_bytes and not self.config.force:
-            print(
-                f"{self.mailbox_prefix}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
-                f"(< {human_bytes(self.config.min_bytes)}), waiting"
-            )
-            self.state.record_pending(len(objects), pending_bytes).save()
-            return None
 
-        tar_key = self.config.archive_key(self.mailbox_prefix, self.state.next_archive_number)
+def archive_once(s3: S3, mailbox_prefix: str) -> dict | None:
+    """Build one tar for this mailbox, or return None if there is not enough email."""
+    source_prefix = mailbox_prefix + SOURCE_SUBPREFIX
+    objects = select_objects(s3, source_prefix)
+    pending_bytes = sum(obj["Size"] for obj in objects)
 
-        print(f"{self.mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
-        result = self.builder.build(objects, tar_key, should_continue=self.deadline.ok)
-
-        if not result["members"]:
-            print(f"{self.mailbox_prefix}: no members written, ran out of time, leaving checkpoint untouched")
-            return None
-
-        self.state.record_archive(
-            last_key=result["members"][-1]["key"],
-            objects=len(result["members"]),
-            size_bytes=result["source_bytes"],
-        ).save()
-
-        deleted, errors = self.delete_sources(result["keys"])
-
+    if pending_bytes < MIN_ARCHIVE_BYTES:
         print(
-            f"{self.mailbox_prefix}: wrote {tar_key} "
-            f"({human_bytes(result['tar_bytes'])}, {result['parts']} parts, {len(result['members']):,} members), "
-            f"deleted {deleted:,} source objects"
+            f"{mailbox_prefix}: {len(objects):,} objects / {human_bytes(pending_bytes)} pending "
+            f"(< {human_bytes(MIN_ARCHIVE_BYTES)}), waiting"
         )
+        return None
 
-        return {
-            "prefix": self.mailbox_prefix,
-            "tar_key": tar_key,
-            "manifest_key": result.get("manifest_key"),
-            "storage_class": self.config.storage_class,
-            "objects": len(result["members"]),
-            "source_bytes": result["source_bytes"],
-            "tar_bytes": result["tar_bytes"],
-            "deleted": deleted,
-            "delete_errors": errors,
-            "last_archived_key": self.state.last_archived_key,
-        }
+    tar_key = f"{mailbox_prefix}{ARCHIVE_SUBPREFIX}archive-{next_archive_number(s3, mailbox_prefix):06d}.tar"
+    print(f"{mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
 
-    def select_objects(self) -> list[dict]:
-        """Return (objects, hit_target) for the next bundle."""
-        cutoff = time.time() - self.config.min_age_seconds
-        objects: list[dict] = []
-        pending_bytes = 0
+    result = build_tar(s3, objects, tar_key, source_prefix)
+    errors = s3.delete_keys(result["keys"])
+    for error in errors[:10]:
+        print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")
 
-        for obj in self.s3.list_objects(self.source_prefix, start_after=self.state.last_archived_key):
-            key = obj["Key"]
-            if not key.endswith(self.config.source_suffix):
-                continue
-            if obj["LastModified"].timestamp() > cutoff:
-                break
+    print(
+        f"{mailbox_prefix}: wrote {tar_key} "
+        f"({human_bytes(result['tar_bytes'])}, {result['parts']} parts, {len(result['members']):,} members), "
+        f"deleted {len(result['keys']) - len(errors):,} source objects"
+    )
 
-            objects.append(obj)
-            pending_bytes += obj["Size"]
-
-            if pending_bytes >= self.config.min_bytes or len(objects) >= self.config.max_objects_per_archive:
-                break
-
-        return objects
-
-    def delete_sources(self, keys: list[str]) -> tuple[int, list[dict]]:
-        errors = self.s3.delete_keys(keys)
-        for error in errors[:10]:
-            print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")
-        return len(keys) - len(errors), errors
+    return {
+        "prefix": mailbox_prefix,
+        "tar_key": tar_key,
+        "manifest_key": result["manifest_key"],
+        "objects": len(result["members"]),
+        "source_bytes": result["source_bytes"],
+        "tar_bytes": result["tar_bytes"],
+        "delete_errors": errors,
+    }
 
 
-class Archiver:
-    """Discovers mailbox roots and archives each of them."""
+def select_objects(s3: S3, source_prefix: str) -> list[dict]:
+    """The oldest objects worth up to one archive, skipping any the uploader may still be writing."""
+    cutoff = time.time() - MIN_AGE_SECONDS
+    objects = []
+    pending_bytes = 0
 
-    def __init__(self, config, context=None):
-        self.config = config
-        self.s3 = S3(config.bucket)
-        self.deadline = Deadline(context, config.time_reserve_ms)
+    for obj in s3.list_objects(source_prefix):
+        if not obj["Key"].endswith(SOURCE_SUFFIX):
+            continue
+        if obj["LastModified"].timestamp() > cutoff:
+            break
+        objects.append(obj)
+        pending_bytes += obj["Size"]
+        if pending_bytes >= MIN_ARCHIVE_BYTES:
+            break
 
-    def run(self) -> dict:
-        summary = {
-            "bucket": self.config.bucket,
-            "archives": [],
-            "prefixes": [],
-            "objects": 0,
-            "source_bytes": 0,
-            "tar_bytes": 0,
-        }
+    return objects
 
-        for mailbox_prefix in self.discover_mailboxes():
-            if not self.deadline.ok():
-                print(f"Stopping early with {self.deadline.remaining_ms() / 1000:.0f}s left before timeout")
-                summary["stopped_early"] = True
-                break
 
-            summary["prefixes"].append(mailbox_prefix)
-            archiver = MailboxArchiver(self.s3, self.config, mailbox_prefix, self.deadline)
-            for result in archiver.run():
-                summary["archives"].append(result)
-                summary["objects"] += result["objects"]
-                summary["source_bytes"] += result["source_bytes"]
-                summary["tar_bytes"] += result.get("tar_bytes", 0)
+def next_archive_number(s3: S3, mailbox_prefix: str) -> int:
+    numbers = [
+        int(match.group(1))
+        for obj in s3.list_objects(mailbox_prefix + ARCHIVE_SUBPREFIX)
+        if (match := re.search(r"archive-(\d+)\.tar$", obj["Key"]))
+    ]
+    return max(numbers, default=0) + 1
 
-        summary["archive_count"] = len(summary["archives"])
-        summary["elapsed_s"] = round(self.deadline.elapsed_s(), 1)
-        return summary
 
-    def discover_mailboxes(self) -> list[str]:
-        """Find every "<address>/<mailbox>/" root that has hot objects."""
-        if self.config.prefixes:
-            return [prefix if prefix.endswith("/") else prefix + "/" for prefix in self.config.prefixes]
+def discover_mailboxes(s3: S3) -> list[str]:
+    """Every "<address>/<mailbox>/" root in the bucket."""
+    roots = []
+    for address_prefix in s3.list_common_prefixes():
+        if "@" in address_prefix:
+            roots.extend(s3.list_common_prefixes(address_prefix))
+    return roots
 
-        roots = []
-        for address_prefix in self.s3.list_common_prefixes():
-            if address_prefix in IGNORED_TOP_LEVEL_PREFIXES or "@" not in address_prefix:
-                continue
-            address = address_prefix.rstrip("/")
-            if self.config.addresses and address not in self.config.addresses:
-                continue
-            roots.extend(self.s3.list_common_prefixes(address_prefix))
-        return roots
+
+def time_left_ms(context) -> float:
+    if context is None:
+        return float("inf")
+    return context.get_remaining_time_in_millis()

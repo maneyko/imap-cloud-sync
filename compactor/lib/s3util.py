@@ -1,37 +1,30 @@
-import boto3
-from botocore.config import Config as BotoConfig
-from botocore.exceptions import ClientError
+import io
 import platform
 
-
+import boto3
 
 
 def human_bytes(num: float) -> str:
     for unit in ("B", "KiB", "MiB", "GiB", "TiB"):
         if abs(num) < 1024 or unit == "TiB":
-            return f"{num:,.1f} {unit}" if unit != "B" else f"{int(num)} B"
+            return f"{int(num)} B" if unit == "B" else f"{num:,.1f} {unit}"
         num /= 1024
 
 
 class S3:
     """Thin wrapper over the bits of the S3 API the archiver needs."""
 
-    def __init__(self, bucket: str, client=None):
+    def __init__(self, bucket: str):
         self.bucket = bucket
         aws_opts = {}
         if platform.uname().system == "Darwin":
             aws_opts["profile_name"] = "personal"
         self.client = boto3.Session(**aws_opts).client("s3")
 
-    # -- listing ---------------------------------------------------------
-
-    def list_objects(self, prefix: str, start_after: str | None = None):
+    def list_objects(self, prefix: str):
         """Yield object dicts under ``prefix`` in lexicographic (== chronological) order."""
-        kwargs = {"Bucket": self.bucket, "Prefix": prefix}
-        if start_after:
-            kwargs["StartAfter"] = start_after
         paginator = self.client.get_paginator("list_objects_v2")
-        for page in paginator.paginate(**kwargs):
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
             yield from page.get("Contents", [])
 
     def list_common_prefixes(self, prefix: str = "") -> list[str]:
@@ -42,32 +35,10 @@ class S3:
             result.extend(item["Prefix"] for item in page.get("CommonPrefixes", []))
         return result
 
-    # -- objects ---------------------------------------------------------
-
     def get_body(self, key: str) -> bytes:
-        "Unused"
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
-    def get_json(self, key: str):
-        """Return (parsed_json, etag), or (None, None) when the key is absent."""
-        import json
-        try:
-            response = self.client.get_object(Bucket=self.bucket, Key=key)
-        except self.client.exceptions.NoSuchKey:
-            return None, None
-        except ClientError as err:
-            if err.response["Error"]["Code"] in ("NoSuchKey", "404"):
-                return None, None
-            raise
-        return json.loads(response["Body"].read()), response["ETag"]
-
-    def head(self, key: str):
-        "Unused"
-        return self.client.head_object(Bucket=self.bucket, Key=key)
-
-    def put(self, key: str, body: bytes, etag_match: str | None = None, **kwargs):
-        if etag_match:
-            kwargs["IfMatch"] = etag_match
+    def put(self, key: str, body: bytes, **kwargs):
         return self.client.put_object(Bucket=self.bucket, Key=key, Body=body, **kwargs)
 
     def delete_keys(self, keys: list[str]) -> list[dict]:
@@ -81,3 +52,74 @@ class S3:
             )
             errors.extend(response.get("Errors", []))
         return errors
+
+
+class MultipartUploadStream(io.RawIOBase):
+    """Write-only file object that streams into an S3 multipart upload.
+
+    Bytes are buffered until ``part_size`` is reached and then flushed as one
+    part, so peak memory stays at roughly one part regardless of object size.
+    The upload is created lazily: a stream smaller than one part is written
+    with a plain put_object instead.
+    """
+
+    def __init__(self, s3: S3, key: str, *, part_size: int, storage_class: str, content_type: str):
+        self.client = s3.client
+        self.bucket = s3.bucket
+        self.key = key
+        self.part_size = part_size
+        self.put_args = {"StorageClass": storage_class, "ContentType": content_type}
+
+        self.upload_id = None
+        self.parts = []
+        self.bytes_written = 0
+        self._buffer = bytearray()
+
+    def writable(self):
+        return True
+
+    def write(self, data) -> int:
+        self._buffer += data
+        self.bytes_written += len(data)
+        while len(self._buffer) >= self.part_size:
+            self._upload_part(bytes(self._buffer[:self.part_size]))
+            del self._buffer[:self.part_size]
+        return len(data)
+
+    def _upload_part(self, chunk: bytes):
+        if self.upload_id is None:
+            response = self.client.create_multipart_upload(Bucket=self.bucket, Key=self.key, **self.put_args)
+            self.upload_id = response["UploadId"]
+        part_number = len(self.parts) + 1
+        response = self.client.upload_part(
+            Bucket=self.bucket,
+            Key=self.key,
+            UploadId=self.upload_id,
+            PartNumber=part_number,
+            Body=chunk,
+        )
+        self.parts.append({"ETag": response["ETag"], "PartNumber": part_number})
+
+    def complete(self) -> dict:
+        """Flush the tail and commit the object."""
+        tail = bytes(self._buffer)
+        self._buffer.clear()
+
+        if self.upload_id is None:
+            return self.client.put_object(Bucket=self.bucket, Key=self.key, Body=tail, **self.put_args)
+
+        if tail:
+            self._upload_part(tail)
+
+        return self.client.complete_multipart_upload(
+            Bucket=self.bucket,
+            Key=self.key,
+            UploadId=self.upload_id,
+            MultipartUpload={"Parts": self.parts},
+        )
+
+    def abort(self):
+        """Discard uploaded parts so we are not billed for orphans."""
+        self._buffer.clear()
+        if self.upload_id:
+            self.client.abort_multipart_upload(Bucket=self.bucket, Key=self.key, UploadId=self.upload_id)
