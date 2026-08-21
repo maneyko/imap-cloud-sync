@@ -11,41 +11,54 @@ Run it directly with:
     EMAIL_ADDRESSES=me@example.com,you@example.com ./main.py
 """
 
+from collections import defaultdict
 import os
+import json
 import sys
 import traceback
 
 from lib.config import SECRETS_DIR
 from lib.sync import Sync
+from lib.util import install_interrupt_handlers, interrupted
 
 
 def configured_addresses() -> list[str]:
-    overrides = sum((os.environ.get(key, "").split(",") for key in ["EMAIL", "EMAILS", "EMAIL_ADDRESSES"]), [])
-    overrides += sys.argv[1:]
-    overrides = [v for v in overrides if v]
-
-    if len(overrides) > 0:
+    if overrides := sys.argv[1:]:
         return overrides
     return sorted(path.name.removesuffix(".toml") for path in SECRETS_DIR.glob("*.toml"))
 
 
 def main() -> int:
-    addresses = configured_addresses()
-    failed = []
-    for name in addresses:
+    install_interrupt_handlers()
+    status = defaultdict(list)
+    skipped = status["skipped"] = configured_addresses()
+    while skipped and (name := skipped.pop()):
+        if interrupted(): break
         try:
-            Sync(name).run()
+            code = Sync(name).run()
+            if code == 0:
+                status["synced"].append(name)
+            else:
+                status["interrupted"].append(name)
         except Exception:
             traceback.print_exc()
-            failed.append(name)
+            status["failed"].append(name)
 
-    if failed:
-        print(f"ERROR: Sync failed for: {failed}")
+    if failed := status.get("failed"):
+        print(f"ERROR: Sync failed: {json.dumps(status)}")
         return 1
 
-    print(f"SUCCESS: Synced emails: {addresses}")
+    if interrupted():
+        print(f"INTERRUPTED by {interrupted().name}: {json.dumps(status)}")
+        return 128 + interrupted()
+
+    print(f"SUCCESS: Synced emails: {json.dumps(status)}")
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        print("ABORTED: interrupted twice, the last batch was not checkpointed")
+        sys.exit(130)

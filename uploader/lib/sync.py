@@ -8,6 +8,7 @@ import email
 from pathlib import Path
 
 from lib import EmailRFC822, MailClient, State
+from lib.util import interrupted
 
 class EmailAddress:
     def __init__(self, email_address):
@@ -34,15 +35,19 @@ class Sync:
             mapping = {"imap_names": imap_names, "s3_names": s3_names}
             raise RuntimeError(f"Mailbox names for S3 are not unique: {json.dumps(mapping)}")
 
-    def run(self):
+    def run(self) -> int:
         "Sync all mailboxes for the email address."
         try:
             # self.validate_unique_mailboxes()
             for mailbox in self.mailboxes:
+                if interrupted():
+                    print(f"Received {interrupted().name}: skipping remaining mailboxes")
+                    return interrupted().value
                 SyncMailbox(self.email_address, mailbox).run()
+            return 0
         finally:
             try:
-                self.email_address.client.logout()
+                print(self.email_address.client.logout())
             except Exception:
                 pass
 
@@ -81,6 +86,12 @@ class SyncMailbox:
                 self.update_local_state(mail)
             elif event == "batch_complete":
                 self.state.push_to_remote()
+                if interrupted():
+                    print(
+                        f"Received {interrupted().name}: stopping {self.email_address.name} {self.mailbox} "
+                        f"at uid {self.state.last_processed_uid()}"
+                    )
+                    return
 
     def write_to_dest(self, mail: EmailRFC822):
         stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))

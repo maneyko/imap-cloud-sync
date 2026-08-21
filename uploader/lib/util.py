@@ -1,10 +1,33 @@
 import os
+import signal
 import subprocess
 import sys
 
 from lib import config
 
 class NoSuchKey(Exception): pass
+
+_interrupt_signal = None
+
+def interrupted():
+    """The signal we have been asked to shut down with, or None."""
+    return _interrupt_signal
+
+def install_interrupt_handlers():
+    """Turn SIGINT/SIGTERM into a request to stop at the next checkpoint.
+
+    A second signal raises KeyboardInterrupt from the handler, aborting wherever
+    we happen to be, so an unresponsive run can always be killed with Ctrl-C.
+    """
+    def handle(signum, _frame):
+        global _interrupt_signal
+        if _interrupt_signal is not None:
+            raise KeyboardInterrupt(f"{signal.Signals(signum).name} received twice")
+        _interrupt_signal = signal.Signals(signum)
+        print(f"\nReceived {_interrupt_signal.name}")
+
+    for sig in (signal.SIGINT, signal.SIGTERM):
+        signal.signal(sig, handle)
 
 zstd = None
 if sys.version_info >= (3, 14):
