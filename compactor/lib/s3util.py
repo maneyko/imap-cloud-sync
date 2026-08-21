@@ -22,18 +22,15 @@ class S3:
         self.client = boto3.Session(**aws_opts).client("s3")
 
     def list_objects(self, prefix: str):
-        """Yield object dicts under ``prefix`` in lexicographic (== chronological) order."""
         paginator = self.client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
             yield from page.get("Contents", [])
 
-    def list_common_prefixes(self, prefix: str = "") -> list[str]:
-        """Return the immediate "directories" under ``prefix``."""
-        result = []
+    def list_common_prefixes(self, prefix: str = ""):
+        """Yield the immediate "directories" under ``prefix``."""
         paginator = self.client.get_paginator("list_objects_v2")
         for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix, Delimiter="/"):
-            result.extend(item["Prefix"] for item in page.get("CommonPrefixes", []))
-        return result
+            yield from (item["Prefix"] for item in page.get("CommonPrefixes", []))
 
     def get_body(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
@@ -41,17 +38,18 @@ class S3:
     def put(self, key: str, body: bytes, **kwargs):
         return self.client.put_object(Bucket=self.bucket, Key=key, Body=body, **kwargs)
 
-    def delete_keys(self, keys: list[str]) -> list[dict]:
-        """Delete keys in batches of 1000. Returns the list of errors (if any)."""
-        errors = []
+    def delete_keys(self, keys: list[str]):
+        """Delete keys in batches of 1000, yielding the error dicts for any that failed.
+
+        This is a generator, so nothing is deleted until it is iterated.
+        """
         for i in range(0, len(keys), 1000):
             batch = keys[i:i + 1000]
             response = self.client.delete_objects(
                 Bucket=self.bucket,
                 Delete={"Objects": [{"Key": key} for key in batch], "Quiet": True},
             )
-            errors.extend(response.get("Errors", []))
-        return errors
+            yield from response.get("Errors", [])
 
 
 class MultipartUploadStream(io.RawIOBase):
@@ -78,7 +76,7 @@ class MultipartUploadStream(io.RawIOBase):
     def writable(self):
         return True
 
-    def write(self, data) -> int:
+    def write(self, data: bytes) -> int:
         self._buffer += data
         self.bytes_written += len(data)
         while len(self._buffer) >= self.part_size:

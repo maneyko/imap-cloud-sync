@@ -62,7 +62,7 @@ class Archiver:
         print(f"{mailbox_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
 
         result = TarBuilder(self.s3, source_prefix).build(objects, tar_key)
-        errors = self.s3.delete_keys(result["keys"])
+        errors = list(self.s3.delete_keys(result["keys"]))
         for error in errors[:10]:
             print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")
 
@@ -101,20 +101,18 @@ class Archiver:
         return objects
 
     def next_archive_number(self, mailbox_prefix: str) -> int:
-        numbers = [
+        numbers = (
             int(match.group(1))
             for obj in self.s3.list_objects(mailbox_prefix + ARCHIVE_SUBPREFIX)
             if (match := re.search(r"archive-(\d+)\.tar$", obj["Key"]))
-        ]
+        )
         return max(numbers, default=0) + 1
 
-    def discover_mailboxes(self) -> list[str]:
-        """Every "<address>/<mailbox>/" root in the bucket."""
-        roots = []
+    def discover_mailboxes(self):
+        """Yield every "<address>/<mailbox>/" root in the bucket."""
         for address_prefix in self.s3.list_common_prefixes():
             if "@" in address_prefix:
-                roots.extend(self.s3.list_common_prefixes(address_prefix))
-        return roots
+                yield from self.s3.list_common_prefixes(address_prefix)
 
     def time_left_ms(self) -> float:
         if self.context is None:
