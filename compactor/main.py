@@ -25,11 +25,11 @@ the Lambda event is ignored.
 import json
 import sys
 
-from lib.archiver import run
+from lib.archiver import Archiver
 
 
 def lambda_handler(event=None, context=None):
-    summary = run(context)
+    summary = Archiver(context).run()
     print(json.dumps(summary, indent=2, default=str))
     return summary
 
