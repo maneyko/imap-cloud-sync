@@ -58,25 +58,25 @@ class SyncMailbox:
         self.mailbox = mailbox
         self.client = email_address.client
         self.config = self.client.config
-        self.state = State(self.config, mailbox)
         self.store = self.config.store
         self.mailbox_s3_name = self.get_mailbox_s3_name(mailbox)
+        self.state = State(self.config, self.mailbox_s3_name)
+        self.log_info = {"email_address": self.email_address.name, "mailbox": self.mailbox}
 
     def run(self):
         self.client.select(self.mailbox)
 
         uidvalidity = self.client.uidvalidity(self.mailbox)
         if self.state.uidvalidity() != uidvalidity:
-            print("WARNING: uidvalidity has updated!")
+            print(f"WARNING: uidvalidity has updated: {json.dumps(self.log_info)}")
             self.state.uidvalidity(uidvalidity)
             self.state.last_processed_uid(self.state.defaults["last_processed_uid"])
+            self.state.push_to_remote()
 
         uids = self.client.uids(self.state.last_processed_uid() + 1)
         for event, mail in self.loop_uids(uids):
             if event == "email":
-                log_info = {
-                    "email_address": self.email_address.name,
-                    "mailbox": self.mailbox,
+                log_info = self.log_info | {
                     "uid": mail.uid,
                     "size_uncompressed": mail.size,
                     "size_compressed": mail.size_compressed,
@@ -87,11 +87,9 @@ class SyncMailbox:
             elif event == "batch_complete":
                 self.state.push_to_remote()
                 if interrupted():
-                    print(
-                        f"Received {interrupted().name}: stopping {self.email_address.name} {self.mailbox} "
-                        f"at uid {self.state.last_processed_uid()}"
-                    )
-                    return
+                    log_info = self.log_info | {"last_processed_uid": self.state.last_processed_uid()}
+                    print(f"Received {interrupted().name}, stopping: {json.dumps(log_info)}")
+                    break
 
     def write_to_dest(self, mail: EmailRFC822):
         stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))
@@ -106,10 +104,10 @@ class SyncMailbox:
         self.state.compressed_bytes(self.state.compressed_bytes() + mail.size_compressed)
         self.state.last_processed_uid(mail.uid)
 
-    def loop_uids(self, uids: list[bytes]):
+    def loop_uids(self, uids: list[int]):
         for i in range(0, len(uids), self.config.batch_size):
             group = uids[i:i+self.config.batch_size]
-            uid_range = (group[0] + b":" + group[-1]).decode()
+            uid_range = f"{group[0]}:{group[-1]}"
             data = self.client.call("UID", "FETCH", uid_range, "(UID INTERNALDATE BODY[])")
             for item in data:
                 if not isinstance(item, tuple):

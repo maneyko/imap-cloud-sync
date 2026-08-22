@@ -38,11 +38,12 @@ class MailClient:
         self._current_mailbox = [mailbox, kwargs]
         return self.call("SELECT", mailbox, **kwargs)
 
-    def uids(self, starting_uid, ending_uid=None) -> list[bytes]:
+    def uids(self, starting_uid: int, ending_uid=None) -> list[int]:
         "Return list of sorted UIDs from the specified bounds."
         ending_uid = ending_uid or "*"
         data = self.call("UID", "SEARCH", f"UID {starting_uid}:{ending_uid}")
-        return data[0].split()
+        uid_ints = [int(uid_bytes) for uid_bytes in data[0].split()]
+        return [uid for uid in uid_ints if uid >= starting_uid]
 
     def uidvalidity(self, mailbox):
         string = self.call("STATUS", mailbox, "(UIDVALIDITY)")[0]
