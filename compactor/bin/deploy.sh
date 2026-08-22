@@ -15,6 +15,7 @@ ZIP="dist/$lambda_name.zip"
 DEPLOY_ITEMS=(
   lib
   main.py
+  config.toml
 )
 
 pyclean() {
