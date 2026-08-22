@@ -1,6 +1,7 @@
 import io
 import json
 import tarfile
+import time
 from compression import zstd  # Python 3.14 stdlib
 
 from lib.s3util import MultipartUploadStream
@@ -9,10 +10,10 @@ from lib.s3util import MultipartUploadStream
 class TarBuilder:
     """Streams the objects under one source prefix, and their metadata sidecars, into tar bundles.
 
-    Each object is stored next to its "<key><sidecar_suffix>" sidecar, so a restored
-    tar carries everything needed to interpret it. The same metadata is copied into
-    the manifest, which is therefore only an index: lose it and it can be rebuilt
-    from the tar.
+    Each object is stored next to its "<key><sidecar_suffix>" sidecar, and the
+    manifest is written as the final member, so a restored tar carries everything
+    needed to interpret it without consulting any config. The identical manifest
+    is also stored beside the tar as an index: lose it and it can be recovered.
     """
 
     def __init__(self, s3, source_prefix: str, settings):
@@ -21,8 +22,9 @@ class TarBuilder:
         self.settings = settings
 
     def build(self, objects: list[dict], tar_key: str) -> dict:
-        """Stream ``objects`` into ``tar_key`` and write a manifest beside it."""
+        """Stream ``objects`` into ``tar_key`` and write a manifest inside it and beside it."""
         members = []
+        manifest_key = tar_key.removesuffix(".tar") + ".manifest.jsonl.zst"
         stream = MultipartUploadStream(
             self.s3, tar_key,
             part_size=self.settings.part_size_mib*1024**2,
@@ -34,13 +36,25 @@ class TarBuilder:
             with tarfile.open(fileobj=stream, mode="w|", format=tarfile.PAX_FORMAT) as tar:
                 for obj in objects:
                     members.append(self.add_member(tar, obj))
+                manifest = self.manifest_body(tar_key, members)
+                self.add_file(tar, manifest_key.rsplit("/", 1)[-1], manifest, int(time.time()))
             stream.complete()
         except Exception:
             stream.abort()
             raise
 
-        result = {
+        # The manifest stays in STANDARD so "which bundle holds this object?" can
+        # be answered without a Glacier restore.
+        self.s3.put(
+            manifest_key,
+            manifest,
+            ContentType="application/jsonl+zstd",
+            StorageClass=self.settings.manifest_storage_class,
+        )
+
+        return {
             "tar_key": tar_key,
+            "manifest_key": manifest_key,
             "tar_bytes": stream.bytes_written,
             "parts": len(stream.parts) or 1,
             "members": members,
@@ -48,19 +62,17 @@ class TarBuilder:
             "keys": [member["key"] for member in members]
                   + [member["sidecar_key"] for member in members if member["sidecar_key"]],
         }
-        result["manifest_key"] = self.write_manifest(result)
-        return result
 
     def add_member(self, tar: tarfile.TarFile, obj: dict) -> dict:
         key = obj["Key"]
         mtime = int(obj["LastModified"].timestamp())
         data = self.s3.get_body(key)
-        name = self.add_file(tar, key, data, mtime)
+        name = self.add_file(tar, key.removeprefix(self.source_prefix), data, mtime)
 
         sidecar_key = key + self.settings.sidecar_suffix
         sidecar = self.s3.get_body_or_none(sidecar_key)
         if sidecar is not None:
-            self.add_file(tar, sidecar_key, sidecar, mtime)
+            self.add_file(tar, sidecar_key.removeprefix(self.source_prefix), sidecar, mtime)
 
         return {
             "key": key,
@@ -72,8 +84,8 @@ class TarBuilder:
             "metadata": self.parse_sidecar(sidecar_key, sidecar),
         }
 
-    def add_file(self, tar: tarfile.TarFile, key: str, data: bytes, mtime: int) -> str:
-        info = tarfile.TarInfo(name=key.removeprefix(self.source_prefix))
+    def add_file(self, tar: tarfile.TarFile, name: str, data: bytes, mtime: int) -> str:
+        info = tarfile.TarInfo(name=name)
         info.size = len(data)
         info.mtime = mtime
         info.mode = 0o644
@@ -92,27 +104,19 @@ class TarBuilder:
             print(f"WARNING: unparsable sidecar {key}: {err}")
             return None
 
-    def write_manifest(self, result: dict) -> str:
-        """Store a JSONL listing of the bundle contents next to the tar.
+    def manifest_body(self, tar_key: str, members: list[dict]) -> bytes:
+        """A JSONL listing of the bundle contents, one line per object plus a header.
 
-        The manifest stays in STANDARD so "which bundle holds this object?" can
-        be answered without a Glacier restore.
+        The tar's own size is deliberately absent: this goes inside the tar, so it
+        cannot describe its own length. Ask S3, or stat the file.
         """
-        manifest_key = result["tar_key"].removesuffix(".tar") + ".manifest.jsonl.zst"
         lines = [json.dumps({
             "type": "header",
-            "tar_key": result["tar_key"],
+            "tar_key": tar_key,
             "source_prefix": self.source_prefix,
             "storage_class": self.settings.archive_storage_class,
-            "object_count": len(result["members"]),
-            "source_bytes": result["source_bytes"],
-            "tar_bytes": result["tar_bytes"],
+            "object_count": len(members),
+            "source_bytes": sum(member["size"] for member in members),
         })]
-        lines += [json.dumps(member) for member in result["members"]]
-        self.s3.put(
-            manifest_key,
-            zstd.compress("\n".join(lines).encode() + b"\n", level=9),
-            ContentType="application/jsonl+zstd",
-            StorageClass=self.settings.manifest_storage_class,
-        )
-        return manifest_key
+        lines += [json.dumps(member) for member in members]
+        return zstd.compress("\n".join(lines).encode() + b"\n", level=9)

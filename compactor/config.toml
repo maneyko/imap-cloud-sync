@@ -10,7 +10,6 @@ archive_storage_class  = "DEEP_ARCHIVE"
 manifest_storage_class = "STANDARD"
 
 min_archive_mib = 250
-# min_age_seconds = 3600
-min_age_seconds = 0
+min_age_seconds = 3600
 part_size_mib   = 16
 time_reserve_ms = 300_000
