@@ -107,12 +107,6 @@ class EmailRFC822:
         return resp
 
     def _header_values(self, header_name) -> list[str]:
-        """Header values as plain strings.
-
-        policy.default refuses to build an address whose display name smuggles in
-        a CR or LF (spam does this), so fall back to decoding the raw header and
-        collapsing the whitespace it should never have contained.
-        """
         try:
             return self.msg.get_all(header_name, [])
         except ValueError:
