@@ -3,24 +3,24 @@ import json
 import tarfile
 from compression import zstd  # Python 3.14 stdlib
 
-from lib.config import Settings
 from lib.s3util import MultipartUploadStream
 
 
 class TarBuilder:
-    """Streams the objects under one mailbox's source prefix into tar bundles."""
+    """Streams the objects under one source prefix into tar bundles."""
 
-    def __init__(self, s3, source_prefix: str):
+    def __init__(self, s3, source_prefix: str, settings):
         self.s3 = s3
         self.source_prefix = source_prefix
+        self.settings = settings
 
     def build(self, objects: list[dict], tar_key: str) -> dict:
         """Stream ``objects`` into ``tar_key`` and write a manifest beside it."""
         members = []
         stream = MultipartUploadStream(
             self.s3, tar_key,
-            part_size=Settings.part_size_mib*1024**2,
-            storage_class=Settings.archive_storage_class,
+            part_size=self.settings.part_size_mib*1024**2,
+            storage_class=self.settings.archive_storage_class,
             content_type="application/x-tar",
         )
         try:
@@ -64,7 +64,7 @@ class TarBuilder:
     def write_manifest(self, result: dict) -> str:
         """Store a JSONL listing of the bundle contents next to the tar.
 
-        The manifest stays in STANDARD so "which bundle holds this email?" can
+        The manifest stays in STANDARD so "which bundle holds this object?" can
         be answered without a Glacier restore.
         """
         manifest_key = result["tar_key"].removesuffix(".tar") + ".manifest.jsonl.zst"
@@ -72,7 +72,7 @@ class TarBuilder:
             "type": "header",
             "tar_key": result["tar_key"],
             "source_prefix": self.source_prefix,
-            "storage_class": Settings.archive_storage_class,
+            "storage_class": self.settings.archive_storage_class,
             "object_count": len(result["members"]),
             "source_bytes": result["source_bytes"],
             "tar_bytes": result["tar_bytes"],
@@ -82,6 +82,6 @@ class TarBuilder:
             manifest_key,
             zstd.compress("\n".join(lines).encode() + b"\n", level=9),
             ContentType="application/jsonl+zstd",
-            StorageClass=Settings.manifest_storage_class,
+            StorageClass=self.settings.manifest_storage_class,
         )
         return manifest_key

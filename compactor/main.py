@@ -5,19 +5,28 @@
 # requires-python = ">=3.14"
 # ///
 
-"""Roll the hot "*.eml.zst" objects the uploader wrote into DEEP_ARCHIVE tars.
+"""Roll many small S3 objects into few large tars, then delete the originals.
 
-Per mailbox root "<address>/<mailbox>/"::
+The bucket to work on comes from $ARCHIVE_BUCKET; everything else is read from
+s3://$ARCHIVE_BUCKET/bucket-archive/config.toml, so one deployment can serve
+several buckets with different layouts::
 
-    .../email/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst  <- source (STANDARD)
-    .../metadata/2026/08/06/21-14-20.1786068860.uid-123456.json  <- left alone
-    .../archive/archive-000042.tar                               <- bundle (DEEP_ARCHIVE)
-    .../archive/archive-000042.manifest.jsonl.zst                <- contents (STANDARD)
+    prefix_pattern = ['@', '.*', '^email$']   # one regex per level, top down
+    suffix_pattern = '\\.eml\\.zst$'            # which objects to bundle
 
-Once a mailbox has {min_archive_bytes} of email, the oldest objects are streamed
-into the next tar and then deleted, so "email/" only ever holds what has not
-been archived yet. Settings live in lib/config.py; there are no arguments and
-the Lambda event is ignored.
+Each discovered prefix is archived into the matching path under
+"bucket-archive/", leaving anything that does not match the suffix alone::
+
+    me@example.com/INBOX/email/2026/08/06/21-14-20.uid-123456.eml.zst   <- source
+    me@example.com/INBOX/metadata/2026/08/06/21-14-20.uid-123456.json   <- left alone
+    bucket-archive/me@example.com/INBOX/email/archive-000042.tar        <- bundle
+    bucket-archive/me@example.com/INBOX/email/archive-000042.manifest.jsonl.zst
+
+Once a prefix holds min_archive_mib of matching objects, the oldest are streamed
+into the next tar and then deleted, so a source prefix only ever holds what has
+not been archived yet. There are no arguments and the Lambda event is ignored.
+
+    ARCHIVE_BUCKET=my-mail-archive ./main.py
 """
 
 import json
