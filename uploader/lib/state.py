@@ -12,7 +12,8 @@ DEFAULTS1 = {
 }
 
 DEFAULTS = {
-    "last_processed_uid": 417880,
+    "last_processed_uid": 0,
+    # "last_processed_uid": 417880,
     # "uidvalidity": 1308597530,
     "uidvalidity": 0,
     "message_count": 0,

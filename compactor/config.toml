@@ -2,6 +2,10 @@
 prefix_pattern = []
 suffix_pattern = ''
 
+# Metadata for "<key>" lives at "<key><sidecar_suffix>"; it is bundled into the
+# tar next to the object it describes and copied into the manifest.
+sidecar_suffix = ".json"
+
 archive_storage_class  = "DEEP_ARCHIVE"
 manifest_storage_class = "STANDARD"
 

@@ -37,6 +37,12 @@ class S3:
     def get_body(self, key: str) -> bytes:
         return self.client.get_object(Bucket=self.bucket, Key=key)["Body"].read()
 
+    def get_body_or_none(self, key: str) -> bytes | None:
+        try:
+            return self.get_body(key)
+        except self.client.exceptions.NoSuchKey:
+            return None
+
     def put(self, key: str, body: bytes, **kwargs):
         return self.client.put_object(Bucket=self.bucket, Key=key, Body=body, **kwargs)
 

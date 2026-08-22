@@ -67,7 +67,7 @@ class Archiver:
         print(
             f"{source_prefix}: wrote {tar_key} "
             f"({human_bytes(result['tar_bytes'])}, {result['parts']} parts, {len(result['members']):,} members), "
-            f"deleted {len(result['keys']) - len(errors):,} source objects"
+            f"deleted {len(result['keys']) - len(errors):,} objects and sidecars"
         )
 
         return {

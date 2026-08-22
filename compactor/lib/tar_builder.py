@@ -7,7 +7,13 @@ from lib.s3util import MultipartUploadStream
 
 
 class TarBuilder:
-    """Streams the objects under one source prefix into tar bundles."""
+    """Streams the objects under one source prefix, and their metadata sidecars, into tar bundles.
+
+    Each object is stored next to its "<key><sidecar_suffix>" sidecar, so a restored
+    tar carries everything needed to interpret it. The same metadata is copied into
+    the manifest, which is therefore only an index: lose it and it can be rebuilt
+    from the tar.
+    """
 
     def __init__(self, s3, source_prefix: str, settings):
         self.s3 = s3
@@ -39,27 +45,52 @@ class TarBuilder:
             "parts": len(stream.parts) or 1,
             "members": members,
             "source_bytes": sum(member["size"] for member in members),
-            "keys": [member["key"] for member in members],
+            "keys": [member["key"] for member in members]
+                  + [member["sidecar_key"] for member in members if member["sidecar_key"]],
         }
         result["manifest_key"] = self.write_manifest(result)
         return result
 
     def add_member(self, tar: tarfile.TarFile, obj: dict) -> dict:
-        data = self.s3.get_body(obj["Key"])
-        info = tarfile.TarInfo(name=obj["Key"].removeprefix(self.source_prefix))
+        key = obj["Key"]
+        mtime = int(obj["LastModified"].timestamp())
+        data = self.s3.get_body(key)
+        name = self.add_file(tar, key, data, mtime)
+
+        sidecar_key = key + self.settings.sidecar_suffix
+        sidecar = self.s3.get_body_or_none(sidecar_key)
+        if sidecar is not None:
+            self.add_file(tar, sidecar_key, sidecar, mtime)
+
+        return {
+            "key": key,
+            "name": name,
+            "size": len(data),
+            "etag": obj.get("ETag", "").strip('"'),
+            "last_modified": obj["LastModified"].isoformat(),
+            "sidecar_key": sidecar_key if sidecar is not None else None,
+            "metadata": self.parse_sidecar(sidecar_key, sidecar),
+        }
+
+    def add_file(self, tar: tarfile.TarFile, key: str, data: bytes, mtime: int) -> str:
+        info = tarfile.TarInfo(name=key.removeprefix(self.source_prefix))
         info.size = len(data)
-        info.mtime = int(obj["LastModified"].timestamp())
+        info.mtime = mtime
         info.mode = 0o644
         info.uid = info.gid = 0
         info.uname = info.gname = ""
         tar.addfile(info, io.BytesIO(data))
-        return {
-            "key": obj["Key"],
-            "name": info.name,
-            "size": len(data),
-            "etag": obj.get("ETag", "").strip('"'),
-            "last_modified": obj["LastModified"].isoformat(),
-        }
+        return info.name
+
+    def parse_sidecar(self, key: str, sidecar: bytes | None):
+        """The sidecar is already safe inside the tar, so bad JSON only costs us the index entry."""
+        if sidecar is None:
+            return None
+        try:
+            return json.loads(sidecar)
+        except json.JSONDecodeError as err:
+            print(f"WARNING: unparsable sidecar {key}: {err}")
+            return None
 
     def write_manifest(self, result: dict) -> str:
         """Store a JSONL listing of the bundle contents next to the tar.
