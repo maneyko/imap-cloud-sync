@@ -3,18 +3,8 @@ import json
 from pathlib import Path
 from lib.util import NoSuchKey
 
-DEFAULTS1 = {
-    "uidvalidity": 0,
-    "last_processed_uid": 0,
-    "message_count": 0,
-    "uncompressed_bytes": 0,
-    "compressed_bytes": 0,
-}
-
 DEFAULTS = {
     "last_processed_uid": 0,
-    # "last_processed_uid": 417880,
-    # "uidvalidity": 1308597530,
     "uidvalidity": 0,
     "message_count": 0,
     "compressed_bytes": 0,
