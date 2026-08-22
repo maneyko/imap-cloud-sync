@@ -1,5 +1,6 @@
 import email
 from email import policy
+from email.header import decode_header, make_header
 from functools import cached_property
 import re
 
@@ -69,14 +70,24 @@ class EmailRFC822:
             "size": {"uncompressed": self.size, "compressed": self.size_compressed},
         }
         if self.msg is not None:
-            result.update({
-                "message_id": self.message_id,
-                "date": self.date.isoformat() if self.date else None,
-                "subject": self.msg["subject"],
-            })
-            for field in self.email_address_fields:
-                if addresses := self._getaddresses(field):
-                    result[field.replace("-", "_")] = addresses
+            try:
+                result.update(self.header_metadata)
+            except Exception as err:
+                # Never let a malformed header stop us storing the mail: the raw
+                # message is the record, and this can be regenerated from it.
+                print(f"WARNING: unusable headers on uid={self.uid}: {type(err).__name__}: {err}")
+        return result
+
+    @cached_property
+    def header_metadata(self):
+        result = {
+            "message_id": self.message_id,
+            "date": self.date.isoformat() if self.date else None,
+            "subject": self.msg["subject"],
+        }
+        for field in self.email_address_fields:
+            if addresses := self._getaddresses(field):
+                result[field.replace("-", "_")] = addresses
         return result
 
     @cached_property
@@ -85,7 +96,7 @@ class EmailRFC822:
 
     def _getaddresses(self, header_name):
         resp = []
-        for display_name, addr in email.utils.getaddresses(self.msg.get_all(header_name, []), strict=False):
+        for display_name, addr in email.utils.getaddresses(self._header_values(header_name), strict=False):
             entry = {}
             if addr:
                 entry["email_address"] = addr
@@ -94,3 +105,16 @@ class EmailRFC822:
             if entry:
                 resp.append(entry)
         return resp
+
+    def _header_values(self, header_name) -> list[str]:
+        """Header values as plain strings.
+
+        policy.default refuses to build an address whose display name smuggles in
+        a CR or LF (spam does this), so fall back to decoding the raw header and
+        collapsing the whitespace it should never have contained.
+        """
+        try:
+            return self.msg.get_all(header_name, [])
+        except ValueError:
+            values = email.message_from_bytes(self.body).get_all(header_name, [])
+            return [" ".join(str(make_header(decode_header(value))).split()) for value in values]
