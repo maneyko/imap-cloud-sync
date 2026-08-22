@@ -95,13 +95,10 @@ class SyncMailbox:
 
     def write_to_dest(self, mail: EmailRFC822):
         stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))
-        mbox_path = self.email_address.as_path / self.mailbox_s3_name
+        mail_path = self.email_address.as_path / self.mailbox_s3_name / f"{stem_path}.eml.zst"
 
-        mail_path = mbox_path / "email" / stem_path
-        meta_path = mbox_path / "metadata" / stem_path
-
-        self.store.write(f"{mail_path}.eml.zst", mail.body_compressed)
-        self.store.write(f"{meta_path}.json", json.dumps(mail.metadata))
+        self.store.write(mail_path, mail.body_compressed)
+        self.store.write(f"{mail_path}.json", json.dumps(mail.metadata))
 
     def update_local_state(self, mail: EmailRFC822):
         self.state.message_count(self.state.message_count() + 1)

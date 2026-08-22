@@ -32,12 +32,15 @@ class EmailRFC822:
     @cached_property
     def date(self):
         if self.msg is None: return
-        timestamp = msg["date"]
+        timestamp = self.msg["date"]
         if timestamp is None:
-            if received := msg["received"]:
+            if received := self.msg["received"]:
                 timestamp = received.split(";")[-1].strip()
         if timestamp:
-            return email.utils.parsedate_to_datetime(timestamp).astimezone(self.config.timezone)
+            try:
+                return email.utils.parsedate_to_datetime(timestamp).astimezone(self.config.timezone)
+            except ValueError:
+                pass
 
     @cached_property
     def msg(self):
@@ -68,7 +71,7 @@ class EmailRFC822:
         if self.msg is not None:
             result.update({
                 "message_id": self.message_id,
-                "date": self.date,
+                "date": self.date.isoformat() if self.date else None,
                 "subject": self.msg["subject"],
             })
             for field in self.email_address_fields:
