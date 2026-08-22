@@ -5,11 +5,10 @@ import re
 from lib.config import Config
 
 class MailClient:
-    # A UID SEARCH reply arrives as one line and imaplib refuses to read a line
-    # longer than _MAXLINE, which a mailbox of ~125k messages will exceed. Ask
-    # for a window of UIDs whose reply cannot get there even if every UID in it
-    # exists (a UID plus its separator is well under 16 bytes).
     uid_batch_size = imaplib._MAXLINE // 16
+
+    base_fetch_attributes = ["UID", "INTERNALDATE", "BODY[]"]
+    gmail_fetch_attributes = ["X-GM-MSGID", "X-GM-THRID"]
 
     def __init__(self, email_address: str):
         self.email_address = email_address
@@ -38,6 +37,13 @@ class MailClient:
         if typ != "OK":
             raise RuntimeError(f"IMAP client returned unsuccessful response: typ={typ}, data={data}")
         return data
+
+    @property
+    def fetch_attributes(self) -> str:
+        attributes = list(self.base_fetch_attributes)
+        if "X-GM-EXT-1" in self.conn.capabilities:
+            attributes += self.gmail_fetch_attributes
+        return "(" + " ".join(attributes) + ")"
 
     def select(self, mailbox, **kwargs):
         kwargs = {"readonly": True} | kwargs

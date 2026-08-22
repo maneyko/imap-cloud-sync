@@ -31,6 +31,17 @@ class EmailRFC822:
         return int(re.search(br'UID (\d+)', self.header).group(1))
 
     @cached_property
+    def gmail_data_items(self):
+        msgid = re.search(br"X-GM-MSGID (\d+)", self.header)
+        thrid = re.search(br"X-GM-THRID (\d+)", self.header)
+        if msgid is None and thrid is None:
+            return None
+        return {
+            "msgid": msgid.group(1).decode() if msgid else None,
+            "thrid": thrid.group(1).decode() if thrid else None,
+        }
+
+    @cached_property
     def date(self):
         if self.msg is None: return
         timestamp = self.msg["date"]
@@ -69,6 +80,8 @@ class EmailRFC822:
             "internaldate": self.internaldate.isoformat(),
             "size": {"uncompressed": self.size, "compressed": self.size_compressed},
         }
+        if self.gmail_data_items is not None:
+            result["gmail"] = self.gmail_data_items
         if self.msg is not None:
             try:
                 result.update(self.header_metadata)

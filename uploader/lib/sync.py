@@ -125,7 +125,7 @@ class SyncMailbox:
         for i in range(0, len(uids), self.config.batch_size):
             group = uids[i:i+self.config.batch_size]
             uid_range = f"{group[0]}:{group[-1]}"
-            data = self.client.call("UID", "FETCH", uid_range, "(UID INTERNALDATE BODY[])")
+            data = self.client.call("UID", "FETCH", uid_range, self.client.fetch_attributes)
             for item in data:
                 if not isinstance(item, tuple):
                     continue
