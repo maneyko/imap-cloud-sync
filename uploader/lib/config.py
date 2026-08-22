@@ -9,11 +9,12 @@ DEFAULTS = {
         "mailboxes": [
             '"INBOX"',
             'INBOX',
+            '"[Gmail]/All Mail"',
             '"[Gmail]/Sent Mail"',
             '"Sent Items"',
         ],
     },
-    "processing": {"batch_size": 5},
+    "processing": {"batch_size": 5, "max_download_mib": 1024},
     "storage": {
         "bucket_name": "my-mail-archive",
         "timezone": "America/Chicago",
@@ -43,10 +44,18 @@ class Config:
         return self.config["imap"]
 
     @cached_property
+    def processing(self):
+        self.config["processing"] = DEFAULTS["processing"] | self.config.setdefault("processing", {})
+        return self.config["processing"]
+
+    @cached_property
     def batch_size(self) -> int:
-        self.config.setdefault("processing", {})
-        self.config["processing"] = DEFAULTS["processing"] | self.config["processing"]
-        return self.config["processing"]["batch_size"]
+        return self.processing["batch_size"]
+
+    @cached_property
+    def max_download_mib(self) -> int:
+        "Ceiling on how much this account pulls from IMAP per run of main.py."
+        return self.processing["max_download_mib"]
 
     @cached_property
     def timezone(self):

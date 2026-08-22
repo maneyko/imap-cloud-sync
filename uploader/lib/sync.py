@@ -16,6 +16,12 @@ class EmailAddress:
         self.client = MailClient(email_address)
         self.config = self.client.config
         self.as_path = Path(email_address)
+        self.downloaded_bytes = 0
+
+    @property
+    def download_budget_exhausted(self) -> bool:
+        "Whether this run has already pulled the account's max_download_mib from IMAP."
+        return self.downloaded_bytes >= self.config.max_download_mib * 1024**2
 
 class Sync:
     def __init__(self, email_address: str):
@@ -43,6 +49,9 @@ class Sync:
                 if interrupted():
                     print(f"Received {interrupted().name}: skipping remaining mailboxes")
                     return interrupted().value
+                if self.email_address.download_budget_exhausted:
+                    print(f"Downloaded {self.email_address.config.max_download_mib} MiB: skipping remaining mailboxes")
+                    break
                 SyncMailbox(self.email_address, mailbox).run()
             return 0
         finally:
@@ -90,6 +99,13 @@ class SyncMailbox:
                     log_info = self.log_info | {"last_processed_uid": self.state.last_processed_uid()}
                     print(f"Received {interrupted().name}, stopping: {json.dumps(log_info)}")
                     break
+                if self.email_address.download_budget_exhausted:
+                    log_info = self.log_info | {
+                        "last_processed_uid": self.state.last_processed_uid(),
+                        "downloaded_mib": round(self.email_address.downloaded_bytes / 1024**2, 1),
+                    }
+                    print(f"Downloaded {self.config.max_download_mib} MiB, stopping: {json.dumps(log_info)}")
+                    break
 
     def write_to_dest(self, mail: EmailRFC822):
         stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))
@@ -99,6 +115,7 @@ class SyncMailbox:
         self.store.write(f"{mail_path}.json", json.dumps(mail.metadata))
 
     def update_local_state(self, mail: EmailRFC822):
+        self.email_address.downloaded_bytes += mail.size
         self.state.message_count(self.state.message_count() + 1)
         self.state.uncompressed_bytes(self.state.uncompressed_bytes() + mail.size)
         self.state.compressed_bytes(self.state.compressed_bytes() + mail.size_compressed)

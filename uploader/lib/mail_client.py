@@ -5,6 +5,12 @@ import re
 from lib.config import Config
 
 class MailClient:
+    # A UID SEARCH reply arrives as one line and imaplib refuses to read a line
+    # longer than _MAXLINE, which a mailbox of ~125k messages will exceed. Ask
+    # for a window of UIDs whose reply cannot get there even if every UID in it
+    # exists (a UID plus its separator is well under 16 bytes).
+    uid_batch_size = imaplib._MAXLINE // 16
+
     def __init__(self, email_address: str):
         self.email_address = email_address
         self.config = Config(self.email_address)
@@ -40,10 +46,15 @@ class MailClient:
 
     def uids(self, starting_uid: int, ending_uid=None) -> list[int]:
         "Return list of sorted UIDs from the specified bounds."
-        ending_uid = ending_uid or "*"
-        data = self.call("UID", "SEARCH", f"UID {starting_uid}:{ending_uid}")
-        uid_ints = [int(uid_bytes) for uid_bytes in data[0].split()]
-        return [uid for uid in uid_ints if uid >= starting_uid]
+        ending_uid = int(ending_uid) if ending_uid else self.uidnext(self._current_mailbox[0]) - 1
+        found = []
+        batch_start = starting_uid
+        while batch_start <= ending_uid:
+            batch_end = min(batch_start + self.uid_batch_size - 1, ending_uid)
+            data = self.call("UID", "SEARCH", f"UID {batch_start}:{batch_end}")
+            found += [int(uid_bytes) for uid_bytes in data[0].split()]
+            batch_start = batch_end + 1
+        return [uid for uid in found if uid >= starting_uid]
 
     def uidvalidity(self, mailbox):
         string = self.call("STATUS", mailbox, "(UIDVALIDITY)")[0]
