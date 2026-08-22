@@ -68,6 +68,7 @@ class EmailRFC822:
         if self.msg is not None:
             result.update({
                 "message_id": self.message_id,
+                "date": self.date,
                 "subject": self.msg["subject"],
             })
             for field in self.email_address_fields:
