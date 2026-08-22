@@ -7,8 +7,11 @@
 
 """Sync every configured mailbox to S3, then exit.
 
-Run it directly with:
-    EMAIL_ADDRESSES=me@example.com,you@example.com ./main.py
+With no arguments every account under secrets/ is synced; pass addresses to
+limit it. Each account stops once it has pulled its max_download_mib.
+
+    ./main.py
+    ./main.py me@example.com you@example.com
 """
 
 from collections import defaultdict

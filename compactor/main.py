@@ -11,16 +11,17 @@ The bucket to work on comes from $ARCHIVE_BUCKET; everything else is read from
 s3://$ARCHIVE_BUCKET/bucket-archive/config.toml, so one deployment can serve
 several buckets with different layouts::
 
-    prefix_pattern = ['@', '.*', '^email$']   # one regex per level, top down
-    suffix_pattern = '\\.eml\\.zst$'            # which objects to bundle
+    prefix_pattern = ['@', '.*']     # one regex per level, top down
+    suffix_pattern = '\\.eml\\.zst$'   # which objects to bundle
 
 Each discovered prefix is archived into the matching path under
-"bucket-archive/", leaving anything that does not match the suffix alone::
+"bucket-archive/". An object's metadata sidecar travels with it into the tar,
+and the manifest is written both inside the tar and beside it::
 
-    me@example.com/INBOX/email/2026/08/06/21-14-20.uid-123456.eml.zst   <- source
-    me@example.com/INBOX/metadata/2026/08/06/21-14-20.uid-123456.json   <- left alone
-    bucket-archive/me@example.com/INBOX/email/archive-000042.tar        <- bundle
-    bucket-archive/me@example.com/INBOX/email/archive-000042.manifest.jsonl.zst
+    me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst
+    me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst.json
+    bucket-archive/me@example.com/INBOX/archive-000042.tar
+    bucket-archive/me@example.com/INBOX/archive-000042.manifest.jsonl.zst
 
 Once a prefix holds min_archive_mib of matching objects, the oldest are streamed
 into the next tar and then deleted, so a source prefix only ever holds what has
