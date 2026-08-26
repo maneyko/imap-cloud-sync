@@ -56,3 +56,15 @@ aws lambda update-function-code \
   --s3-key $KEY
 
 echo "Lambda synced"
+
+runtime_name=$(aws lambda get-function-configuration --function-name $lambda_name | jq -r .Runtime)
+
+latest_runtime=$(curl -sL "https://endoflife.date/api/python.json" |
+  jq -r 'max_by(.eol).latest | "python" + match("\\d+\\.\\d+").string')
+
+if [[ $runtime_name != $latest_runtime ]]; then
+  echo "A more recent version of Python is enabled!"
+  echo "Latest version: $latest_runtime"
+else
+  echo "Lambda is using the latest stable Python version: $runtime_name"
+fi
