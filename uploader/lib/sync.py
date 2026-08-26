@@ -85,12 +85,6 @@ class SyncMailbox:
         uids = self.client.uids(self.state.last_processed_uid() + 1)
         for event, mail in self.loop_uids(uids):
             if event == "email":
-                log_info = self.log_info | {
-                    "uid": mail.uid,
-                    "size_uncompressed": mail.size,
-                    "size_compressed": mail.size_compressed,
-                }
-                print(f"Processing: {json.dumps(log_info)}")
                 self.write_to_dest(mail)
                 self.update_local_state(mail)
             elif event == "batch_complete":
@@ -110,6 +104,12 @@ class SyncMailbox:
     def write_to_dest(self, mail: EmailRFC822):
         stem_path = mail.internaldate.strftime(self.config.path_template.format(epoch=mail.epoch, uid=mail.uid))
         mail_path = self.email_address.as_path / self.mailbox_s3_name / f"{stem_path}.eml.zst"
+        log_info = {
+            "path": str(mail_path),
+            "size_uncompressed": mail.size,
+            "size_compressed": mail.size_compressed,
+        }
+        print(f"Uploading: {json.dumps(log_info)}")
 
         self.store.write(mail_path, mail.body_compressed)
         self.store.write(f"{mail_path}.json", json.dumps(mail.metadata))

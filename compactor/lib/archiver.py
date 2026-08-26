@@ -34,6 +34,9 @@ class Archiver:
                 if result is None:
                     break
                 archives.append(result)
+                # Nothing was deleted, so the same objects would be bundled again.
+                if not self.settings.delete_sources:
+                    break
 
         return {
             "bucket": self.s3.bucket,
@@ -60,14 +63,20 @@ class Archiver:
         print(f"{source_prefix}: bundling {len(objects):,} objects / {human_bytes(pending_bytes)} -> {tar_key}")
 
         result = TarBuilder(self.s3, source_prefix, self.settings).build(objects, tar_key)
-        errors = self.s3.delete_keys(result["keys"])
-        for error in errors[:10]:
-            print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")
+
+        errors = []
+        if self.settings.delete_sources:
+            errors = self.s3.delete_keys(result["keys"])
+            for error in errors[:10]:
+                print(f"ERROR: failed to delete {error.get('Key')}: {error.get('Code')} {error.get('Message')}")
+            deleted = f"deleted {len(result['keys']) - len(errors):,} objects and sidecars"
+        else:
+            deleted = f"kept {len(result['keys']):,} objects and sidecars (delete_sources = false)"
 
         print(
             f"{source_prefix}: wrote {tar_key} "
             f"({human_bytes(result['tar_bytes'])}, {result['parts']} parts, {len(result['members']):,} members), "
-            f"deleted {len(result['keys']) - len(errors):,} objects and sidecars"
+            f"{deleted}"
         )
 
         return {
