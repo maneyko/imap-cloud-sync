@@ -7,9 +7,10 @@
 
 """Roll many small S3 objects into few large tars, then delete the originals.
 
-The bucket to work on comes from $ARCHIVE_BUCKET; everything else is read from
-s3://$ARCHIVE_BUCKET/bucket-archive/config.toml, so one deployment can serve
-several buckets with different layouts::
+The bucket to work on is named by the caller -- argv[1] on the CLI, "bucket" in
+the Lambda event -- and everything else is read from
+s3://<bucket>/bucket-archive/config.toml, so one deployment can serve several
+buckets with different layouts::
 
     prefix_pattern = ['@', '.*']     # one regex per level, top down
     suffix_pattern = '\\.eml\\.zst$'   # which objects to bundle
@@ -25,9 +26,9 @@ and the manifest is written both inside the tar and beside it::
 
 Once a prefix holds min_archive_mib of matching objects, the oldest are streamed
 into the next tar and then deleted, so a source prefix only ever holds what has
-not been archived yet. There are no arguments and the Lambda event is ignored.
+not been archived yet.
 
-    ARCHIVE_BUCKET=my-mail-archive ./main.py
+    ./main.py my-mail-archive
 """
 
 import json
@@ -37,11 +38,11 @@ from lib.archiver import Archiver
 
 
 def lambda_handler(event=None, context=None):
-    summary = Archiver(context).run()
+    summary = Archiver(event["bucket"], context).run()
     print(json.dumps(summary, indent=2, default=str))
     return summary
 
 
 if __name__ == "__main__":
-    lambda_handler()
+    lambda_handler({"bucket": sys.argv[1]})
     sys.exit(0)

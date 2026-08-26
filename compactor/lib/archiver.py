@@ -1,4 +1,3 @@
-import os
 import re
 import time
 
@@ -20,8 +19,8 @@ class Archiver:
     so whatever is left under a source prefix is exactly what still needs archiving.
     """
 
-    def __init__(self, context=None):
-        self.s3 = S3(os.environ["ARCHIVE_BUCKET"])
+    def __init__(self, bucket: str, context=None):
+        self.s3 = S3(bucket)
         self.settings = load_settings(self.s3)
         self.context = context
 

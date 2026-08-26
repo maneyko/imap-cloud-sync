@@ -14,8 +14,9 @@ way and which sharp edges have already drawn blood.
 - Comments explain *why*, never *what*. If a comment restates the line below it,
   delete the comment and fix the name.
 - No config option gets added until a second real caller needs it. Constants in
-  a toml beat flags, flags beat environment variables, and env vars are reserved
-  for the one thing that cannot live in the bucket (`ARCHIVE_BUCKET`).
+  a toml beat flags, flags beat environment variables, and the compactor takes
+  no environment at all — the invocation names the bucket (`argv[1]` on the CLI,
+  `{"bucket": ...}` in the Lambda event) and the bucket names everything else.
 
 ## Invariants — do not break these
 
