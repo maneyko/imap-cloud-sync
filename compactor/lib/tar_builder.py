@@ -66,8 +66,9 @@ class TarBuilder:
     def add_member(self, tar: tarfile.TarFile, obj: dict) -> dict:
         key = obj["Key"]
         mtime = int(obj["LastModified"].timestamp())
-        data = self.s3.get_body(key)
-        name = self.add_file(tar, key.removeprefix(self.source_prefix), data, mtime)
+        body, size = self.s3.get_stream(key)
+        with body:
+            name = self.add_stream(tar, key.removeprefix(self.source_prefix), body, size, mtime)
 
         sidecar_key = key + self.settings.sidecar_suffix
         sidecar = self.s3.get_body_or_none(sidecar_key)
@@ -77,7 +78,7 @@ class TarBuilder:
         return {
             "key": key,
             "name": name,
-            "size": len(data),
+            "size": size,
             "etag": obj.get("ETag", "").strip('"'),
             "last_modified": obj["LastModified"].isoformat(),
             "sidecar_key": sidecar_key if sidecar is not None else None,
@@ -85,13 +86,17 @@ class TarBuilder:
         }
 
     def add_file(self, tar: tarfile.TarFile, name: str, data: bytes, mtime: int) -> str:
+        return self.add_stream(tar, name, io.BytesIO(data), len(data), mtime)
+
+    def add_stream(self, tar: tarfile.TarFile, name: str, fileobj, size: int, mtime: int) -> str:
+        """Copy ``size`` bytes from ``fileobj`` into the tar in 16 KiB chunks."""
         info = tarfile.TarInfo(name=name)
-        info.size = len(data)
+        info.size = size
         info.mtime = mtime
         info.mode = 0o644
         info.uid = info.gid = 0
         info.uname = info.gname = ""
-        tar.addfile(info, io.BytesIO(data))
+        tar.addfile(info, fileobj)
         return info.name
 
     def parse_sidecar(self, key: str, sidecar: bytes | None):
