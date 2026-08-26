@@ -65,6 +65,7 @@ latest_runtime=$(curl -sL "https://endoflife.date/api/python.json" |
 if [[ $runtime_name != $latest_runtime ]]; then
   echo "A more recent version of Python is enabled!"
   echo "Latest version: $latest_runtime"
+  echo "Be sure to update the runtime specified in the Terraform as well"
 else
   echo "Lambda is using the latest stable Python version: $runtime_name"
 fi

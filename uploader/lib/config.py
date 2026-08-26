@@ -40,8 +40,12 @@ class Config:
 
     @cached_property
     def imap(self):
-        self.config["imap"] = DEFAULTS["imap"] | self.config["imap"]
-        return self.config["imap"]
+        conf = self.config["imap"] = DEFAULTS["imap"] | self.config["imap"]
+        mailboxes = conf["mailboxes"]
+        if self.email_address.endswith("@gmail.com"):
+            # 'All Mail' mailbox contains everything
+            conf["mailboxes"] = [mbox for mbox in conf["mailboxes"] if mbox not in ["INBOX", '"INBOX"']]
+        return conf
 
     @cached_property
     def processing(self):
