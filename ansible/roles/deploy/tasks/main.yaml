@@ -12,7 +12,7 @@
   git:
     accept_hostkey: true
     repo: "{{ imap_cloud_sync_repo }}"
-    version: "{{ config.version }}"
+    version: "{{ config.version | default('main') }}"
     dest: "{{ imap_cloud_sync_root }}"
 
 # The owner may edit the checkout; the service user may only read it. setgid on
@@ -55,7 +55,7 @@
     dest: "{{ app_user.home }}/.aws/config"
     content: |
       [default]
-      region = {{ config.aws_region }}
+      region = {{ imap_cloud_sync_aws_region }}
     owner: "{{ imap_cloud_sync_user }}"
     group: "{{ imap_cloud_sync_user }}"
     mode: '0644'

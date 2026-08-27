@@ -14,14 +14,12 @@ argument_specs:
             description: >-
               Human user who owns the checkout and may edit it. The service
               runs as its own system user and only ever reads.
-          aws_region:
-            type: str
-            default: us-east-2
-            description: Region written to the service user's AWS config.
           version:
             type: str
             default: main
-            description: Branch, tag or commit to check out.
+            description: >-
+              Branch, tag or commit to check out. Suboption defaults are
+              documentation only, so the role applies this one itself.
 
       secrets:
         type: dict
