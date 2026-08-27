@@ -1,10 +1,4 @@
 ---
-# The service runs main.py through uv's script shebang, so uv has to exist
-# before the timer fires. The role is a no-op on a host that already has it.
-- name: Install uv
-  include_role:
-    name: maneyko.roles.uv
-
 - name: Create imap-cloud-sync user
   register: app_user
   user:
@@ -13,6 +7,17 @@
     shell: /usr/sbin/nologin
     system: true
     comment: User for the IMAP to S3 mail archiver
+
+# The service runs main.py through uv's script shebang, so uv has to exist
+# before the timer fires. The role is a no-op on a host that already has it,
+# but the group membership is not optional: uv lives inside a directory only
+# that group can enter. It comes second so the uv role adds an account that
+# already exists rather than creating a non-system one.
+- name: Install uv
+  include_role:
+    name: maneyko.roles.uv
+  vars:
+    uv_users: ["{{ imap_cloud_sync_user }}"]
 
 - name: Clone imap-cloud-sync repo
   git:
