@@ -55,11 +55,16 @@ that constant.
 entire mailbox. When hand-writing a `state.json`, the `uidvalidity` must match
 the server exactly, and it is per *mailbox*, not per account.
 
+**`systemctl disable` deletes a unit that is a symlink into the checkout.** The
+role copies the units into `/etc/systemd/system` for that reason; linking them
+means turning the timer off also removes it.
+
 **Gmail:** `X-GM-*` fetch attributes are gated on the `X-GM-EXT-1` capability,
 not on the address — Workspace domains serve them too, and a server without them
 rejects the whole `FETCH` as `BAD`. Gmail UID order does not follow date order
 (a re-label rewrites UIDs), so a sync can march *backwards* through time. IMAP
-downloads are throttled to roughly 2.5 GB/day per account.
+downloads are throttled to roughly 2.5 GB/day per account, which is why the
+timer is daily and `max_download_mib` caps a single run.
 
 ## Testing
 

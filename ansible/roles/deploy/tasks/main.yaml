@@ -72,14 +72,16 @@
     group: "{{ imap_cloud_sync_user }}"
     mode: '0600'
 
-# Linked rather than copied: the units are part of the checkout, so a pull that
-# changes them cannot leave a stale copy behind in /etc.
-- name: Link systemd units
+# Copied, not linked: `systemctl disable` deletes a unit that is a symlink in
+# /etc/systemd/system, taking the deployment with it. Re-copying each run is
+# what keeps these in step with the checkout.
+- name: Install systemd units
   loop: [imap-cloud-sync.service, imap-cloud-sync.timer]
-  file:
+  copy:
+    remote_src: true
     src: "{{ imap_cloud_sync_root }}/uploader/etc/systemd/{{ item }}"
     dest: /etc/systemd/system/{{ item }}
-    state: link
+    mode: '0644'
 
 - name: Enable imap-cloud-sync timer
   systemd_service:
