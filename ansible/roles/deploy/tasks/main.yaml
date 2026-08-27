@@ -1,0 +1,89 @@
+---
+- name: Create imap-cloud-sync user
+  register: app_user
+  user:
+    name: "{{ imap_cloud_sync_user }}"
+    home: /var/lib/{{ imap_cloud_sync_user }}
+    shell: /usr/sbin/nologin
+    system: true
+    comment: User for the IMAP to S3 mail archiver
+
+- name: Clone imap-cloud-sync repo
+  git:
+    accept_hostkey: true
+    repo: "{{ imap_cloud_sync_repo }}"
+    version: "{{ config.version }}"
+    dest: "{{ imap_cloud_sync_root }}"
+
+# The owner may edit the checkout; the service user may only read it. setgid on
+# the directories keeps a later `git pull` from handing files back to root.
+- name: Set imap-cloud-sync file permissions
+  changed_when: false
+  shell: |
+    chown -R {{ config.owner }}:{{ imap_cloud_sync_user }} {{ imap_cloud_sync_root }}
+    find {{ imap_cloud_sync_root }} -type d -exec chmod 2750 {} +
+    find {{ imap_cloud_sync_root }} -type f -exec chmod g-w,o= {} +
+
+- name: Create imap-cloud-sync secrets directory
+  file:
+    state: directory
+    path: "{{ imap_cloud_sync_conf }}/secrets"
+    owner: "{{ config.owner }}"
+    group: "{{ imap_cloud_sync_user }}"
+    mode: '0750'
+
+- name: Write imap-cloud-sync account secrets
+  loop: "{{ secrets.users }}"
+  no_log: true
+  copy:
+    content: "{{ item }}"
+    dest: "{{ imap_cloud_sync_conf }}/secrets/{{ (item | regex_findall(imap_cloud_sync_username_re)) | first }}.toml"
+    owner: "{{ config.owner }}"
+    group: "{{ imap_cloud_sync_user }}"
+    mode: '0640'
+
+- name: Create AWS config directory
+  file:
+    state: directory
+    path: "{{ app_user.home }}/.aws"
+    owner: "{{ imap_cloud_sync_user }}"
+    group: "{{ imap_cloud_sync_user }}"
+    mode: '0700'
+
+- name: Write AWS region
+  copy:
+    dest: "{{ app_user.home }}/.aws/config"
+    content: |
+      [default]
+      region = {{ config.aws_region }}
+    owner: "{{ imap_cloud_sync_user }}"
+    group: "{{ imap_cloud_sync_user }}"
+    mode: '0644'
+
+- name: Write AWS credentials
+  no_log: true
+  copy:
+    dest: "{{ app_user.home }}/.aws/credentials"
+    content: |
+      [default]
+      aws_access_key_id = {{ secrets.aws.credentials.access_key }}
+      aws_secret_access_key = {{ secrets.aws.credentials.secret_key }}
+    owner: "{{ imap_cloud_sync_user }}"
+    group: "{{ imap_cloud_sync_user }}"
+    mode: '0600'
+
+# Linked rather than copied: the units are part of the checkout, so a pull that
+# changes them cannot leave a stale copy behind in /etc.
+- name: Link systemd units
+  loop: [imap-cloud-sync.service, imap-cloud-sync.timer]
+  file:
+    src: "{{ imap_cloud_sync_root }}/uploader/etc/systemd/{{ item }}"
+    dest: /etc/systemd/system/{{ item }}
+    state: link
+
+- name: Enable imap-cloud-sync timer
+  systemd_service:
+    name: imap-cloud-sync.timer
+    daemon_reload: true
+    enabled: true
+    state: started

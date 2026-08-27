@@ -23,7 +23,9 @@ DEFAULTS = {
 
 app_root = Path(__file__).resolve().parent.parent
 
-SECRETS_DIR = app_root / "secrets"
+# Deployed at /etc/imap-cloud-sync/secrets; symlink it to uploader/secrets to
+# work on a checkout.
+SECRETS_DIR = Path("/etc/imap-cloud-sync/secrets")
 
 class Config:
     path_template = "%Y/%m/%d/%H-%M-%S.{epoch}.uid-{uid}"

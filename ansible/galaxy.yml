@@ -1,0 +1,12 @@
+---
+namespace: maneyko
+name: imap_cloud_sync
+version: 1.0.0
+readme: README.md
+authors:
+  - maneyko
+description: Deploys imap-cloud-sync onto a host
+license:
+  - MIT
+build_ignore:
+  - '*.tar.gz'

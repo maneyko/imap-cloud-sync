@@ -1,0 +1,56 @@
+---
+argument_specs:
+  main:
+    short_description: Deploy imap-cloud-sync and its systemd timer
+    options:
+      config:
+        type: dict
+        required: true
+        description: Non-secret settings, from the caller's inventory.
+        options:
+          owner:
+            type: str
+            required: true
+            description: >-
+              Human user who owns the checkout and may edit it. The service
+              runs as its own system user and only ever reads.
+          aws_region:
+            type: str
+            default: us-east-2
+            description: Region written to the service user's AWS config.
+          version:
+            type: str
+            default: main
+            description: Branch, tag or commit to check out.
+
+      secrets:
+        type: dict
+        required: true
+        no_log: true
+        description: Everything that must not be logged.
+        options:
+          users:
+            type: list
+            elements: str
+            required: true
+            description: >-
+              One complete account TOML document per mailbox owner. The
+              filename is taken from the imap.username inside it.
+          aws:
+            type: dict
+            required: true
+            description: AWS credentials for the bucket the uploader writes to.
+            options:
+              credentials:
+                type: dict
+                required: true
+                description: Access key pair for the imap-cloud-sync IAM user.
+                options:
+                  access_key:
+                    type: str
+                    required: true
+                    description: AWS_ACCESS_KEY_ID.
+                  secret_key:
+                    type: str
+                    required: true
+                    description: AWS_SECRET_ACCESS_KEY.

@@ -7,7 +7,8 @@
 
 """Sync every configured mailbox to S3, then exit.
 
-With no arguments every account under secrets/ is synced; pass addresses to
+With no arguments every account in /etc/imap-cloud-sync/secrets is synced; pass
+addresses to
 limit it. Each account stops once it has pulled its max_download_mib.
 
     ./main.py

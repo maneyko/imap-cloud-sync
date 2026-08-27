@@ -1,8 +1,8 @@
 [Unit]
-Description=Periodic IMAP to S3 sync (imap-sync)
+Description=Periodic IMAP to S3 sync (imap-cloud-sync)
 
 [Timer]
-Unit=imap-sync.service
+Unit=imap-cloud-sync.service
 OnCalendar=*:0/30
 RandomizedDelaySec=5m
 Persistent=true
