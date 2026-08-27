@@ -5,7 +5,6 @@ Description=Periodic IMAP to S3 sync (imap-cloud-sync)
 Unit=imap-cloud-sync.service
 OnCalendar=daily
 RandomizedDelaySec=5m
-Persistent=true
 
 [Install]
 WantedBy=timers.target
