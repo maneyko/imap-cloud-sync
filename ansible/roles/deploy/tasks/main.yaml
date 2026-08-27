@@ -1,4 +1,10 @@
 ---
+# The service runs main.py through uv's script shebang, so uv has to exist
+# before the timer fires. The role is a no-op on a host that already has it.
+- name: Install uv
+  include_role:
+    name: maneyko.roles.uv
+
 - name: Create imap-cloud-sync user
   register: app_user
   user:
@@ -79,7 +85,7 @@
   loop: [imap-cloud-sync.service, imap-cloud-sync.timer]
   copy:
     remote_src: true
-    src: "{{ imap_cloud_sync_root }}/uploader/etc/systemd/{{ item }}"
+    src: "{{ imap_cloud_sync_root }}/etc/systemd/{{ item }}"
     dest: /etc/systemd/system/{{ item }}
     mode: '0644'
 

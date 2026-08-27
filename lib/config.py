@@ -23,7 +23,7 @@ DEFAULTS = {
 
 app_root = Path(__file__).resolve().parent.parent
 
-# Deployed at /etc/imap-cloud-sync/secrets; symlink it to uploader/secrets to
+# Deployed at /etc/imap-cloud-sync/secrets; symlink it at a scratch directory to
 # work on a checkout.
 SECRETS_DIR = Path("/etc/imap-cloud-sync/secrets")
 

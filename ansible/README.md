@@ -1,6 +1,6 @@
 # maneyko.imap_cloud_sync
 
-The role that deploys this repo onto a host: a system user, a clone at
+The role that deploys this repo onto a host: uv, a system user, a clone at
 `/opt/imap-cloud-sync`, per-account secrets in `/etc/imap-cloud-sync/secrets/`,
 AWS credentials for the service user, and the systemd timer that runs the sync.
 
@@ -8,10 +8,18 @@ AWS credentials for the service user, and the systemd timer that runs the sync.
 
 ```yaml
 collections:
+  - name: git@github.com:maneyko/ansible-roles.git
+    type: git
+    version: main
   - name: git@github.com:maneyko/imap-cloud-sync.git#/ansible
     type: git
     version: main
 ```
+
+`maneyko.roles` is listed because this role installs `uv` through
+`maneyko.roles.uv`. It is not declared as a collection dependency in
+`galaxy.yml`: that would send `ansible-galaxy` to the public Galaxy server
+looking for a collection that only exists in a private git repo.
 
 ```yaml
 - hosts: all

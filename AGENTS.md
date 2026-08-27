@@ -73,8 +73,9 @@ worked:
 
 - **Create a throwaway bucket** and exercise the real code path against it, then
   delete the bucket.
-- **`DRY_RUN=1` and `LIMIT=n`** exist on the one-off import scripts so a real run
-  can be rehearsed and then sampled before committing to 400k objects.
+- **Sync one account at a time** (`./main.py me@example.com`) and cap it with
+  `max_download_mib` so a change can be rehearsed on a small mailbox before it
+  runs against a 125k-message one.
 - **Verify by reading back from S3**, not by trusting the return code.
   Decompress a body, diff a listing against what you believe you uploaded.
 - **Reconcile counts.** Nearly every real bug showed up as an arithmetic
@@ -98,17 +99,15 @@ of each document, so the secret needs no keys alongside it.
 ```
 ansible/
   galaxy.yml           collection metadata; consumed as maneyko.imap_cloud_sync
-  roles/deploy/        user, clone, secrets, AWS creds, systemd timer
+  roles/deploy/        uv, user, clone, secrets, AWS creds, systemd timer
 
-uploader/
-  main.py              entry point; one process, all accounts, exits when done
-  import_nas.py        one-off: maildir + sqlite metadata -> S3 (historical backfill)
-  upload_from_csv.py   one-off: upload files listed in a CSV (orphan recovery)
-  lib/sync.py          the per-mailbox loop and checkpointing
-  lib/mail_client.py   IMAP plumbing, reconnects, UID paging, capability detection
-  lib/email.py         one message: parsing, metadata, compression
-  lib/state.py         per-mailbox checkpoint stored in S3
-  etc/systemd/         the units the role symlinks into /etc/systemd/system
+main.py                entry point; one process, all accounts, exits when done
+lib/sync.py            the per-mailbox loop and checkpointing
+lib/mail_client.py     IMAP plumbing, reconnects, UID paging, capability detection
+lib/email.py           one message: parsing, metadata, compression
+lib/state.py           per-mailbox checkpoint stored in S3
+lib/config.py          per-account toml merged over the defaults
+etc/systemd/           the units the role installs into /etc/systemd/system
 ```
 
 Account secrets live in `/etc/imap-cloud-sync/secrets/<address>.toml`, on the

@@ -4,7 +4,7 @@ imap_cloud_sync_root: /opt/imap-cloud-sync
 imap_cloud_sync_conf: /etc/imap-cloud-sync
 imap_cloud_sync_user: imap-cloud-sync
 
-# The bucket is hardcoded in uploader/lib/config.py, so its region is a property
+# The bucket is hardcoded in lib/config.py, so its region is a property
 # of the app rather than of whoever deploys it.
 imap_cloud_sync_aws_region: us-east-2
 

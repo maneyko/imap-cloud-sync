@@ -5,6 +5,6 @@ After=network-online.target
 [Service]
 Type=oneshot
 User=imap-cloud-sync
-ExecStart=/opt/imap-cloud-sync/uploader/main.py
+ExecStart=/opt/imap-cloud-sync/main.py
 # main.py exits 128+signum after checkpointing, so a `systemctl stop` is not a failure.
 SuccessExitStatus=130 143
