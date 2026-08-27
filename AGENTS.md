@@ -14,51 +14,34 @@ way and which sharp edges have already drawn blood.
 - Comments explain *why*, never *what*. If a comment restates the line below it,
   delete the comment and fix the name.
 - No config option gets added until a second real caller needs it. Constants in
-  a toml beat flags, flags beat environment variables, and the compactor takes
-  no environment at all — the invocation names the bucket (`argv[1]` on the CLI,
-  `{"bucket": ...}` in the Lambda event) and the bucket names everything else.
+  a toml beat flags, flags beat environment variables.
+
+## Scope
+
+This repo is the uploader only. The archiver that rolls these objects into
+Deep Archive tars lives in
+[bucket-archiver](https://github.com/maneyko/bucket-archiver); it knows nothing
+about email, and that separation is deliberate. Anything about tars, manifests,
+or `bucket-archive/` belongs there.
 
 ## Invariants — do not break these
 
-1. **The compactor keeps no checkpoint.** Whatever remains under a source prefix
-   is what still needs archiving. Never add a state file "for speed".
-2. **Delete only after the tar is committed.** The order is: write tar → write
-   manifest → delete sources. A crash anywhere leaves duplicate work, never data
-   loss.
-3. **The tar is self-sufficient.** Sidecars and the manifest go inside it. This
-   is what makes the manifest disposable and regenerable.
-4. **The uploader can never delete.** Its IAM key has no `DeleteObject`. Keep it
+1. **The uploader can never delete.** Its IAM key has no `DeleteObject`. Keep it
    that way; it is the reason a compromised client cannot destroy the archive.
-5. **Metadata failure must never block ingestion.** The raw message is the
+2. **Metadata failure must never block ingestion.** The raw message is the
    record. If headers cannot be parsed, store the message with thin metadata and
    warn — a single malformed message must not wedge a mailbox forever.
-6. **One writer at a time.** The compactor assumes nothing else is mutating the
-   bucket. EventBridge retries are disabled for this reason.
 
 ## Sharp edges, all of which have already caused a bug
 
 **IAM resources are scoped by suffix, not by path.** `*/email/*` broke silently
-the moment the layout changed, twice — once for the Lambda's deletes and once
-for the uploader's writes. Policies now match `*.eml.zst` and `*.eml.zst.json`,
-which cannot accidentally match a tar, a manifest, a `state.json`, or the config.
-Failures here are silent: deletes come back in `delete_errors`, not as an
-exception.
+the moment the layout changed. The uploader's write policy now matches
+`*.eml.zst` and `*.eml.zst.json`, which cannot accidentally match a tar, a
+manifest, a `state.json`, or the config.
 
-**`zip -r` appends to an existing archive.** `bin/deploy.sh` removes the zip
-first, or you ship files you deleted months ago.
-
-**`aws lambda invoke` retries after 60 seconds.** The CLI's default read timeout
-silently fires a *second concurrent invocation*, which then races the first for
-the same objects and dies with `NoSuchKey`. Always pass `--cli-read-timeout 0`.
-
-**`min_age_seconds` is a race guard, not a nicety.** The uploader writes the
-object and then its sidecar. If the compactor archives in between, that message
-loses its metadata permanently. Keep it at 3600.
-
-**Deep Archive objects cannot be copied or renamed.** `CopyObject` fails with
-`InvalidObjectState` until restored (12–48 h). Get the naming right before
-writing, because you cannot fix it afterwards. Deleting early still bills the
-180-day minimum.
+**`min_age_seconds` in the archiver is a race guard, not a nicety.** The
+uploader writes the object and then its sidecar. If the archiver bundles in
+between, that message loses its metadata permanently.
 
 **S3 keys embed the UID, so a different UID is a duplicate, not an overwrite.**
 This is how the historical import and the live sync can both hold the same
@@ -84,33 +67,34 @@ There are no unit tests, and adding a framework is not the answer. What has
 worked:
 
 - **Create a throwaway bucket** and exercise the real code path against it, then
-  delete the bucket. Every compactor change was validated this way, including
-  the edge cases (missing sidecar, corrupt sidecar, `state.json` sitting inside a
-  source prefix).
+  delete the bucket.
 - **`DRY_RUN=1` and `LIMIT=n`** exist on the one-off import scripts so a real run
   can be rehearsed and then sampled before committing to 400k objects.
-- **Verify by reading back from S3**, not by trusting the return code. Round-trip
-  a tar, decompress a body, diff a manifest against the bucket listing.
+- **Verify by reading back from S3**, not by trusting the return code.
+  Decompress a body, diff a listing against what you believe you uploaded.
 - **Reconcile counts.** Nearly every real bug showed up as an arithmetic
   mismatch: files vs database rows, manifest entries vs distinct message-ids,
   uploaded objects vs `Total Objects`.
 
 ## Deploying
 
-```bash
-cd compactor && ./bin/deploy.sh     # builds the zip, uploads it, updates the Lambda
-```
+`ansible/` is a collection with one role, `maneyko.imap_cloud_sync.deploy`,
+which is how this lands on a host. The caller passes exactly two variables,
+`config` and `secrets`, and holds no knowledge of the layout — not the paths,
+not the unit names, not the fact that accounts are tomls. Keep it that way: if
+`google-setup` has to know something new about this app, the role is missing a
+task.
 
-Terraform lives in the `terraform-aws` repo and pins the package version, so a
-`terraform apply` will roll the function back to whatever version is recorded
-there. Bump it, or accept that the CLI deploy is temporary.
-
-The uploader has no deploy step — copy the directory to the host that runs it,
-along with `secrets/`. `etc/systemd/` has a timer unit for that.
+The account tomls name their own files: the role reads `imap.username` back out
+of each document, so the secret needs no keys alongside it.
 
 ## Repo map
 
 ```
+ansible/
+  galaxy.yml           collection metadata; consumed as maneyko.imap_cloud_sync
+  roles/deploy/        user, clone, secrets, AWS creds, systemd timer
+
 uploader/
   main.py              entry point; one process, all accounts, exits when done
   import_nas.py        one-off: maildir + sqlite metadata -> S3 (historical backfill)
@@ -119,13 +103,9 @@ uploader/
   lib/mail_client.py   IMAP plumbing, reconnects, UID paging, capability detection
   lib/email.py         one message: parsing, metadata, compression
   lib/state.py         per-mailbox checkpoint stored in S3
-  secrets/*.toml       one per account (gitignored)
-
-compactor/
-  main.py              Lambda handler and CLI, same code path
-  config.toml          defaults; the bucket's own config overrides them
-  lib/archiver.py      prefix discovery, selection, the archive loop
-  lib/tar_builder.py   streams objects + sidecars into a tar, writes the manifest
-  lib/s3util.py        S3 wrapper and the multipart upload stream
-  bin/deploy.sh        build, upload, update function code
+  etc/systemd/         the units the role symlinks into /etc/systemd/system
 ```
+
+Account secrets live in `/etc/imap-cloud-sync/secrets/<address>.toml`, on the
+host and on a laptop alike; symlink that path at a scratch directory to work on
+a checkout.

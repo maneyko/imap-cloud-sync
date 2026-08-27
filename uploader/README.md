@@ -4,7 +4,7 @@ Pulls mail from IMAP and writes it to S3. Append-only, resumable, and safe to
 interrupt at any moment.
 
 ```bash
-./main.py                              # every account under secrets/
+./main.py                              # every account under /etc/imap-cloud-sync/secrets
 ./main.py me@example.com you@example.com
 ```
 
@@ -26,7 +26,7 @@ overwrite — never a duplicate. That property is what makes interruption cheap.
 
 The `.json` sidecar is the metadata: dates, sizes, message-id, subject, and the
 address headers with display names. It sits next to the object rather than in a
-parallel tree so the compactor can find it by appending a suffix, with no
+parallel tree so the archiver can find it by appending a suffix, with no
 knowledge of the layout.
 
 ```json
@@ -47,8 +47,9 @@ strings because they are 64-bit and `jq` would round them as numbers.
 
 ## Configuration
 
-One toml per account in `secrets/` (gitignored). Only the IMAP block is
-required; everything else has a default in `lib/config.py`.
+One toml per account in `/etc/imap-cloud-sync/secrets/`, named for the address.
+Only the IMAP block is required; everything else has a default in
+`lib/config.py`.
 
 ```toml
 [imap]
@@ -103,7 +104,7 @@ migration will want them.
 on disk, joined against a sqlite metadata DB by maildir basename. It assigns
 synthetic UIDs numbered `1..N` in date order (which stay below the real UIDs
 the mailbox resumes from) and writes the identical object/sidecar pair, so the
-compactor cannot tell imported mail from live mail. Used to import 382,752
+archiver cannot tell imported mail from live mail. Used to import 382,752
 messages.
 
 **`upload_from_csv.py`** — uploads the files listed in a CSV

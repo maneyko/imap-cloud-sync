@@ -1,18 +1,18 @@
 # imap-cloud-sync
 
-Personal mail archive. Pulls mail off IMAP servers, stores each message in S3 as
-a compressed object with a metadata sidecar, then rolls those small objects into
-large tarballs in Glacier Deep Archive.
+Personal mail archive. Pulls mail off IMAP servers and stores each message in S3
+as a compressed object with a metadata sidecar.
 
-Two components, deliberately independent:
+The second half of the story lives elsewhere: those small objects are rolled
+into large tarballs in Glacier Deep Archive by
+[bucket-archiver](https://github.com/maneyko/bucket-archiver), a Lambda that has
+no idea what an email is. This repo has no idea archives exist. They share
+nothing but the bucket layout.
 
 | | runs | job |
 |---|---|---|
 | [`uploader/`](uploader/) | on a machine you own, on a timer | IMAP → S3. Append-only, resumable. |
-| [`compactor/`](compactor/) | AWS Lambda, nightly | many small S3 objects → few large tars in Deep Archive |
-
-They share nothing but the bucket layout. The uploader has no idea archives
-exist; the compactor has no idea what an email is.
+| `bucket-archiver` (separate repo) | AWS Lambda, nightly | many small S3 objects → few large tars in Deep Archive |
 
 ## Why it is shaped this way
 
@@ -29,15 +29,15 @@ Lambda whose IAM role cannot touch anything but source objects.
 ## Data flow
 
 ```
-   IMAP                    S3 STANDARD                      S3 DEEP_ARCHIVE
- ┌────────┐   uploader   ┌──────────────────────┐  compactor  ┌────────────────┐
- │ INBOX  │ ───────────► │ <addr>/<mailbox>/... │ ──────────► │ bucket-archive │
- │ Sent   │              │   *.eml.zst          │             │  archive-N.tar │
- │ AllMail│              │   *.eml.zst.json     │             └────────────────┘
- └────────┘              │   state.json         │                     │
-                         └──────────────────────┘             manifest stays
-                              sources deleted                 in STANDARD, and
-                              once inside a tar               is also inside the tar
+   IMAP                    S3 STANDARD                    S3 DEEP_ARCHIVE
+ ┌────────┐   uploader   ┌──────────────────────┐ bucket-  ┌────────────────┐
+ │ INBOX  │ ───────────► │ <addr>/<mailbox>/... │ archiver │ bucket-archive │
+ │ Sent   │              │   *.eml.zst          │ ───────► │  archive-N.tar │
+ │ AllMail│              │   *.eml.zst.json     │          └────────────────┘
+ └────────┘              │   state.json         │                  │
+                         └──────────────────────┘          manifest stays
+                              sources deleted              in STANDARD, and
+                              once inside a tar            is also inside the tar
 ```
 
 ## Bucket layout
@@ -46,7 +46,7 @@ Lambda whose IAM role cannot touch anything but source objects.
 me@example.com/INBOX/state.json                                   sync checkpoint
 me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123.eml.zst      message
 me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123.eml.zst.json metadata
-bucket-archive/config.toml                                        compactor settings
+bucket-archive/config.toml                                        archiver settings
 bucket-archive/me@example.com/INBOX/archive-000001.tar            DEEP_ARCHIVE
 bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst   STANDARD
 ```
@@ -57,7 +57,7 @@ than duplicating it.
 
 ## Three ideas hold the whole thing together
 
-**The bucket is the state.** The compactor keeps no checkpoint file. Sources are
+**The bucket is the state.** The archiver keeps no checkpoint file. Sources are
 deleted once they are safely inside a tar, so whatever remains under a source
 prefix is exactly what still needs archiving. Nothing to corrupt, nothing to get
 out of sync, and `aws s3 ls` tells you the truth.
@@ -84,8 +84,9 @@ done | jq -c 'select(.metadata.from[]?.email_address | test("bruce"))
 ## Getting started
 
 ```bash
-# 1. one toml per account
-cat > uploader/secrets/me@example.com.toml <<'EOF'
+# 1. one toml per account, named for the address
+sudo mkdir -p /etc/imap-cloud-sync/secrets
+cat | sudo tee /etc/imap-cloud-sync/secrets/me@example.com.toml <<'EOF'
 [imap]
 server   = "imap.example.com"
 username = "me@example.com"
@@ -95,25 +96,46 @@ EOF
 # 2. sync (idempotent, resumable, safe to ctrl-c)
 cd uploader && ./main.py me@example.com
 
-# 3. tell the compactor how this bucket is laid out
+# 3. tell the archiver how this bucket is laid out
 cat > /tmp/config.toml <<'EOF'
 prefix_pattern = ['@', '.*']
 suffix_pattern = '\.eml\.zst$'
 EOF
 aws s3 cp /tmp/config.toml s3://BUCKET/bucket-archive/config.toml
-
-# 4. archive
-cd compactor && ARCHIVE_BUCKET=BUCKET ./main.py
 ```
 
-Both components run under `uv` with inline dependencies — no virtualenv to
-manage, no requirements file. They need Python 3.14 for the stdlib
+Archiving itself is `bucket-archiver`'s job; see that repo.
+
+The uploader runs under `uv` with inline dependencies — no virtualenv to
+manage, no requirements file. It needs Python 3.14 for the stdlib
 `compression.zstd` module.
+
+## Deploying it
+
+[`ansible/`](ansible/) is a collection holding one role,
+`maneyko.imap_cloud_sync.deploy`, which puts all of the above on a host: a
+system user, a clone at `/opt/imap-cloud-sync`, the account tomls, AWS
+credentials, and the systemd timer. A caller supplies only its settings and its
+secrets:
+
+```yaml
+- hosts: all
+  roles:
+    - role: maneyko.imap_cloud_sync.deploy
+      vars:
+        config:  "{{ app_config }}"
+        secrets: "{{ app_secrets }}"
+```
+
+The repo that owns the machine (`google-setup`) holds no imap-cloud-sync logic
+beyond that call — it pulls the secret out of GCP Secret Manager and hands it
+over. See [`ansible/README.md`](ansible/README.md).
 
 ## Infrastructure
 
-Terraform lives in a separate repo (`terraform-aws`): the bucket, the Lambda,
-its schedule, and two tightly-scoped IAM identities. The uploader may only
+Terraform lives in a separate repo (`terraform-aws`): the bucket, the Lambda
+(from `bucket-archiver`'s module), its schedule, and two tightly-scoped IAM
+identities. The uploader may only
 `PutObject` on `*.eml.zst` and `*.eml.zst.json` and read/write `*/state.json` —
 it cannot delete anything, so a stolen laptop key cannot destroy the archive.
 The Lambda may write only under `bucket-archive/` and delete only source objects.
@@ -133,18 +155,8 @@ every message is two PUTs.
 
 ## Future plans
 
-**The compactor is intended to move to its own repository.** Nothing in it knows
-about email — it discovers prefixes with a list of regexes, bundles objects
-matching a suffix, and carries along a metadata sidecar whose contents it never
-inspects. That genericity is deliberate: the next use is **photo and video
-backup**, where the layout is `2026/08/12-00-34.567.jpg` with an
-`exiftool -json` sidecar at `2026/08/12-00-34.567.jpg.json`. The only change
-required is a different `bucket-archive/config.toml`:
-
-```toml
-prefix_pattern = ['^\d{4}$', '^\d{2}$']
-suffix_pattern = '\.(jpe?g|png|mp4|mov)$'
-```
-
-Deciding what metadata *means* stays with whichever uploader writes it. Keeping
-that line clean is what lets one archiver serve both buckets.
+Nothing pending. The archiver has moved to
+[bucket-archiver](https://github.com/maneyko/bucket-archiver), where it also
+serves a photo/video bucket. Deciding what metadata *means* stays here, with the
+uploader that writes the sidecar; keeping that line clean is what lets one
+archiver serve both buckets.
