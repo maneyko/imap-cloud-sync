@@ -8,13 +8,17 @@ AWS credentials for the service user, and the systemd timer that runs the sync.
 
 ```yaml
 collections:
-  - name: git@github.com:maneyko/ansible-roles.git
+  - name: https://github.com/maneyko/ansible-roles.git
     type: git
     version: main
-  - name: git@github.com:maneyko/imap-cloud-sync.git#/ansible
+  - name: https://github.com/maneyko/imap-cloud-sync.git#/ansible
     type: git
     version: main
 ```
+
+The `#/ansible` fragment is the subdirectory the collection lives in — this repo
+is an application that happens to ship its own deploy role, not a collection
+repo.
 
 `maneyko.roles` is listed because this role installs `uv` through
 `maneyko.roles.uv`. It is not declared as a collection dependency in
@@ -34,7 +38,12 @@ looking for a collection that only exists in a private git repo.
 per app and hands it over whole. Both are declared in
 `roles/deploy/meta/argument_specs.yaml` and validated before the role runs:
 
-    ansible-doc -t role -M roles maneyko.imap_cloud_sync.deploy
+    ansible-doc -t role maneyko.imap_cloud_sync.deploy   # collection installed
+    ansible-doc -t role -r roles deploy                  # from this repo
+
+Do not reach for `-M`: it is `--module-path`, and `ansible-doc -t role -M roles
+<name>` prints nothing and **exits 0**, which is how a wrong invocation can sit
+in a README for months.
 
 `secrets.users` is a list of complete account TOML documents, exactly as the
 uploader wants them on disk. Each is written to
@@ -42,6 +51,35 @@ uploader wants them on disk. Each is written to
 out of the TOML itself — so the list needs no keys and no parallel structure to
 keep in sync.
 
-The clone is pulled over SSH from a private repo, so the play needs agent
-forwarding (`ansible_ssh_extra_args: "-A"`) and `SSH_AUTH_SOCK` kept across
-`sudo`.
+`imap_cloud_sync_repo` in `roles/deploy/vars/main.yaml` is an SSH URL, so the
+play needs agent forwarding (`ansible_ssh_extra_args: "-A"`) and `SSH_AUTH_SOCK`
+kept across `sudo`. Override it with an HTTPS URL to drop both requirements.
+
+## What it lays down
+
+| Path | Owner | Holds |
+|---|---|---|
+| `/opt/imap-cloud-sync` | `config.owner`, `2750` | the checkout; read-only to the service |
+| `/etc/imap-cloud-sync/secrets/` | `config.owner:imap-cloud-sync`, `0750` | one `<address>.toml` per account, `0640` |
+| `~imap-cloud-sync/.aws/` | the service user, `0700` | region and the access key pair |
+| `/etc/systemd/system/` | root | `imap-cloud-sync.service` and its `.timer` |
+
+Defaults live in `roles/deploy/vars/main.yaml` rather than `defaults/`, because
+they are facts about this app rather than knobs for a caller: the bucket is
+hardcoded in `lib/config.py`, so `us-east-2` is a property of the app.
+
+**The units are copied, not linked.** `systemctl disable` deletes a unit file
+that is a symlink into a checkout, so linking them would mean turning the timer
+off also removed it.
+
+`OnCalendar=daily`, deliberately: a first sync of a large Gmail account is
+throttled to roughly 2.5 GB/day, so the backfill is meant to take many runs and
+each one is capped by `max_download_mib`.
+
+## Gaps
+
+- **No `enabled` option.** The role hardcodes started and enabled, so "deploy it
+  but leave it off" is not expressible, and a host being built has to be quieted
+  by hand. A `config.enabled` defaulting to false would be the fix.
+- **The checkout is chowned without scoping git's `safe.directory`.** See the
+  sharp edge of the same name in `../AGENTS.md`.

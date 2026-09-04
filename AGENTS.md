@@ -59,6 +59,27 @@ the server exactly, and it is per *mailbox*, not per account.
 role copies the units into `/etc/systemd/system` for that reason; linking them
 means turning the timer off also removes it.
 
+**This app reads a shared uv cache it does not own.** The shebang is `uv run
+--script`, so uv builds an ephemeral environment under
+`/opt/uv/cache/environments-v2` from the packages in `archive-v0`. This app has
+no venv of its own and only ever *reads* that cache — which makes it the first
+thing to break when another consumer of `/opt/uv` mishandles it, and it will
+break as a plain `Permission denied` on some `.dist-info` file. Check the group
+and mode on the file uv names before looking anywhere else, and check whether it
+is shared with something outside the cache:
+
+```sh
+find /opt /home -xdev -inum $(stat -c %i <the file uv named>)
+```
+
+**The deploy role chowns its own checkout, which breaks root's git on the next
+run** — `detected dubious ownership`. The first apply works because root created
+the clone; every apply after it fails, unless something else on the host has
+already set `safe.directory` globally, which is a dependency this role does not
+declare and should not rely on. The fix is to scope the exception to the clone
+task with `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_0` / `GIT_CONFIG_VALUE_0` in its
+own `environment:`, leaving no state on the host. Not done here yet.
+
 **Gmail:** `X-GM-*` fetch attributes are gated on the `X-GM-EXT-1` capability,
 not on the address — Workspace domains serve them too, and a server without them
 rejects the whole `FETCH` as `BAD`. Gmail UID order does not follow date order
@@ -88,8 +109,8 @@ worked:
 which is how this lands on a host. The caller passes exactly two variables,
 `config` and `secrets`, and holds no knowledge of the layout — not the paths,
 not the unit names, not the fact that accounts are tomls. Keep it that way: if
-`google-setup` has to know something new about this app, the role is missing a
-task.
+the calling repo has to learn something new about this app, the role is missing
+a task.
 
 The account tomls name their own files: the role reads `imap.username` back out
 of each document, so the secret needs no keys alongside it.

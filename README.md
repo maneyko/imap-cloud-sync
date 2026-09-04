@@ -196,15 +196,20 @@ secrets:
         secrets: "{{ app_secrets }}"
 ```
 
-The repo that owns the machine (`google-setup`) holds no imap-cloud-sync logic
-beyond that call — it pulls the secret out of GCP Secret Manager and hands it
-over. See [`ansible/README.md`](ansible/README.md).
+The repo that owns the machine holds no imap-cloud-sync logic beyond that call —
+it fetches the secret from wherever it keeps secrets and hands it over. See
+[`ansible/README.md`](ansible/README.md).
 
 ## Infrastructure
 
-Terraform lives in a separate repo (`terraform-aws`): the bucket, the Lambda
-(from `bucket-archiver`'s module), its schedule, and two tightly-scoped IAM
-identities. The uploader may only `PutObject` on `*.eml.zst` and
+This repo declares no infrastructure. What it needs is a bucket and one IAM
+identity, which in my case are Terraform in a separate repo alongside the
+Lambda (from `bucket-archiver`'s module) and its schedule — but nothing here
+depends on how they were created.
+
+The IAM split is the part worth copying. Two identities touch the archive and
+neither can do the other's job. The uploader may only `PutObject` on
+`*.eml.zst` and
 `*.eml.zst.json` and read/write `*/state.json` — it cannot delete anything, so a
 stolen laptop key cannot destroy the archive. The Lambda may write only under
 `bucket-archive/` and delete only source objects.
