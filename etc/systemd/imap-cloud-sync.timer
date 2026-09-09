@@ -3,7 +3,7 @@ Description=Periodic IMAP to S3 sync (imap-cloud-sync)
 
 [Timer]
 Unit=imap-cloud-sync.service
-OnCalendar=daily
+OnCalendar=*-*-* 00:30:00 America/Chicago
 RandomizedDelaySec=5m
 
 [Install]
