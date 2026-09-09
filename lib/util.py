@@ -85,8 +85,11 @@ def read_from_s3(bucket_name, path) -> bytes:
         try:
             return s3_client.get_object(Bucket=bucket_name, Key=path)["Body"].read()
         except Exception as err:
-            if err.response["Error"]["Code"] == "NoSuchKey":
+            # AccessDenied occurs if IAM role doesn't have s3:ListBucket.
+            if err.response["Error"]["Code"] in ("NoSuchKey", "AccessDenied"):
                 raise NoSuchKey(*err.args)
+            else:
+                raise err
     else:
         result = subprocess.run(
             ["aws", "s3", "cp", f"s3://{bucket_name}/{path}", "-"],
