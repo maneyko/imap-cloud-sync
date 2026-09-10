@@ -1,11 +1,11 @@
 ---
 namespace: maneyko
-name: imap_cloud_sync
+name: imap_s3_uploader
 version: 1.0.0
 readme: README.md
 authors:
   - maneyko
-description: Deploys imap-cloud-sync onto a host
+description: Deploys imap-s3-uploader onto a host
 license:
   - MIT
 build_ignore:

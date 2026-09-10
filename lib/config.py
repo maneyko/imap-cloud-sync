@@ -30,7 +30,7 @@ app_root = Path(__file__).resolve().parent.parent
 if platform.uname().system == "Darwin":
     SECRETS_DIR = app_root / "secrets"
 else:
-    SECRETS_DIR = Path("/etc/imap-cloud-sync/secrets")
+    SECRETS_DIR = Path("/etc/imap-s3-uploader/secrets")
 
 class Config:
     path_template = "%Y/%m/%d/%H-%M-%S.{epoch}.uid-{uid}"

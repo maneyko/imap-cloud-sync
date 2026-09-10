@@ -1,11 +1,11 @@
 [Unit]
-Description=Sync IMAP mailboxes to S3 (imap-cloud-sync)
+Description=Sync IMAP mailboxes to S3 (imap-s3-uploader)
 After=network-online.target
 
 [Service]
 Type=oneshot
-User=imap-cloud-sync
-EnvironmentFile=/etc/imap-cloud-sync/environment
-ExecStart=/opt/imap-cloud-sync/main.py
+User=imap-s3-uploader
+EnvironmentFile=/etc/imap-s3-uploader/environment
+ExecStart=/opt/imap-s3-uploader/main.py
 # main.py exits 128+signum after checkpointing, so a `systemctl stop` is not a failure.
 SuccessExitStatus=130 143

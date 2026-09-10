@@ -1,7 +1,7 @@
 ---
 argument_specs:
   main:
-    short_description: Deploy imap-cloud-sync and its systemd timer
+    short_description: Deploy imap-s3-uploader and its systemd timer
     options:
       config:
         type: dict
@@ -48,7 +48,7 @@ argument_specs:
               credentials:
                 type: dict
                 required: true
-                description: Access key pair for the imap-cloud-sync IAM user.
+                description: Access key pair for the uploader's IAM user.
                 options:
                   access_key:
                     type: str

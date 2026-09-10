@@ -1,7 +1,7 @@
-# maneyko.imap_cloud_sync
+# maneyko.imap_s3_uploader
 
 The role that deploys this repo onto a host: uv, a system user, a clone at
-`/opt/imap-cloud-sync`, per-account secrets in `/etc/imap-cloud-sync/secrets/`,
+`/opt/imap-s3-uploader`, per-account secrets in `/etc/imap-s3-uploader/secrets/`,
 AWS credentials for the service user, and the systemd timer that runs the sync.
 
 `requirements.yml`:
@@ -11,7 +11,7 @@ collections:
   - name: https://github.com/maneyko/ansible-roles.git
     type: git
     version: main
-  - name: https://github.com/maneyko/imap-cloud-sync.git#/ansible
+  - name: https://github.com/maneyko/imap-s3-uploader.git#/ansible
     type: git
     version: main
 ```
@@ -28,7 +28,7 @@ looking for a collection that is only published as a git repo.
 ```yaml
 - hosts: all
   roles:
-    - role: maneyko.imap_cloud_sync.deploy
+    - role: maneyko.imap_s3_uploader.deploy
       vars:
         config:  "{{ app_config }}"
         secrets: "{{ app_secrets }}"
@@ -38,7 +38,7 @@ looking for a collection that is only published as a git repo.
 per app and hands it over whole. Both are declared in
 `roles/deploy/meta/argument_specs.yaml` and validated before the role runs:
 
-    ansible-doc -t role maneyko.imap_cloud_sync.deploy   # collection installed
+    ansible-doc -t role maneyko.imap_s3_uploader.deploy   # collection installed
     ansible-doc -t role -r roles deploy                  # from this repo
 
 Do not reach for `-M`: it is `--module-path`, and `ansible-doc -t role -M roles
@@ -47,16 +47,16 @@ in a README for months.
 
 `secrets.users` is a list of complete account TOML documents, exactly as the
 uploader wants them on disk. Each is written to
-`/etc/imap-cloud-sync/secrets/<username>.toml`, where `<username>` is read back
+`/etc/imap-s3-uploader/secrets/<username>.toml`, where `<username>` is read back
 out of the TOML itself — so the list needs no keys and no parallel structure to
 keep in sync.
 
 `config.bucket_name` reaches the app as `BUCKET_NAME` in
-`/etc/imap-cloud-sync/environment`, which the service unit loads. It goes
+`/etc/imap-s3-uploader/environment`, which the service unit loads. It goes
 through a file rather than an `Environment=` line because the units are copied
 out of the checkout verbatim, so there is nothing to interpolate a value into.
 
-`imap_cloud_sync_repo` in `roles/deploy/vars/main.yaml` is an HTTPS URL, so the
+`imap_s3_uploader_repo` in `roles/deploy/vars/main.yaml` is an HTTPS URL, so the
 clone is anonymous and the play needs nothing on the SSH side. Override it with
 an SSH URL to deploy from a private fork, and that brings back agent forwarding
 (`ansible_ssh_extra_args: "-A"`) and `SSH_AUTH_SOCK` kept across `sudo`.
@@ -65,11 +65,11 @@ an SSH URL to deploy from a private fork, and that brings back agent forwarding
 
 | Path | Owner | Holds |
 |---|---|---|
-| `/opt/imap-cloud-sync` | `config.owner`, `2750` | the checkout; read-only to the service |
-| `/etc/imap-cloud-sync/secrets/` | `config.owner:imap-cloud-sync`, `0750` | one `<address>.toml` per account, `0640` |
-| `/etc/imap-cloud-sync/environment` | `config.owner`, `0644` | `BUCKET_NAME`, loaded by the unit |
-| `~imap-cloud-sync/.aws/` | the service user, `0700` | region and the access key pair |
-| `/etc/systemd/system/` | root | `imap-cloud-sync.service` and its `.timer` |
+| `/opt/imap-s3-uploader` | `config.owner`, `2750` | the checkout; read-only to the service |
+| `/etc/imap-s3-uploader/secrets/` | `config.owner:imap-s3-uploader`, `0750` | one `<address>.toml` per account, `0640` |
+| `/etc/imap-s3-uploader/environment` | `config.owner`, `0644` | `BUCKET_NAME`, loaded by the unit |
+| `~imap-s3-uploader/.aws/` | the service user, `0700` | region and the access key pair |
+| `/etc/systemd/system/` | root | `imap-s3-uploader.service` and its `.timer` |
 
 Defaults live in `roles/deploy/vars/main.yaml` rather than `defaults/`, because
 they are facts about this app rather than knobs for a caller: the paths, the
@@ -91,6 +91,6 @@ each one is capped by `max_download_mib`.
 - **The checkout is chowned without scoping git's `safe.directory`.** See the
   sharp edge of the same name in `../AGENTS.md`.
 - **The bucket's region is assumed, not passed.** `config.bucket_name` is a
-  caller setting, but `imap_cloud_sync_aws_region` is still a role var, so a
+  caller setting, but `imap_s3_uploader_aws_region` is still a role var, so a
   bucket outside `us-east-2` has to override it as a role param. A
   `config.aws_region` next to `config.bucket_name` would be the fix.

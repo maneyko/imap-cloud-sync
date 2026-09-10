@@ -1,4 +1,4 @@
-# imap-cloud-sync
+# imap-s3-uploader
 
 Personal mail archive. Pulls mail off IMAP servers and stores each message in S3
 as a compressed object with a metadata sidecar. Append-only, resumable, and safe
@@ -6,7 +6,7 @@ to interrupt at any moment.
 
 ```bash
 export BUCKET_NAME=my-mail-archive
-./main.py                              # every account in /etc/imap-cloud-sync/secrets
+./main.py                              # every account in /etc/imap-s3-uploader/secrets
 ./main.py me@example.com you@example.com
 ```
 
@@ -92,7 +92,7 @@ bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst   STANDARD
 
 ## Configuration
 
-One toml per account in `/etc/imap-cloud-sync/secrets/`, named for the address.
+One toml per account in `/etc/imap-s3-uploader/secrets/`, named for the address.
 Only the IMAP block is required; everything else has a default in
 [`lib/config.py`](lib/config.py) — except the bucket, which is required and
 comes from `$BUCKET_NAME`.
@@ -115,7 +115,7 @@ password = "..."
 ```
 
 `BUCKET_NAME` names the bucket every account writes to, and has no default. On
-a host the Ansible role writes it to `/etc/imap-cloud-sync/environment` and the
+a host the Ansible role writes it to `/etc/imap-s3-uploader/environment` and the
 systemd unit loads it from there; by hand, export it. A single account can point
 somewhere else with `storage.bucket_name`.
 
@@ -161,8 +161,8 @@ uploads are idempotent.
 
 ```bash
 # 1. one toml per account, named for the address
-sudo mkdir -p /etc/imap-cloud-sync/secrets
-cat | sudo tee /etc/imap-cloud-sync/secrets/me@example.com.toml <<'EOF'
+sudo mkdir -p /etc/imap-s3-uploader/secrets
+cat | sudo tee /etc/imap-s3-uploader/secrets/me@example.com.toml <<'EOF'
 [imap]
 server   = "imap.example.com"
 username = "me@example.com"
@@ -189,21 +189,21 @@ module.
 ## Deploying it
 
 [`ansible/`](ansible/) is a collection holding one role,
-`maneyko.imap_cloud_sync.deploy`, which puts all of the above on a host: `uv`, a
-system user, a clone at `/opt/imap-cloud-sync`, the account tomls, AWS
+`maneyko.imap_s3_uploader.deploy`, which puts all of the above on a host: `uv`, a
+system user, a clone at `/opt/imap-s3-uploader`, the account tomls, AWS
 credentials, and the systemd timer. A caller supplies only its settings and its
 secrets:
 
 ```yaml
 - hosts: all
   roles:
-    - role: maneyko.imap_cloud_sync.deploy
+    - role: maneyko.imap_s3_uploader.deploy
       vars:
         config:  "{{ app_config }}"
         secrets: "{{ app_secrets }}"
 ```
 
-The repo that owns the machine holds no imap-cloud-sync logic beyond that call —
+The repo that owns the machine holds no imap-s3-uploader logic beyond that call —
 it fetches the secret from wherever it keeps secrets and hands it over. See
 [`ansible/README.md`](ansible/README.md).
 
@@ -216,7 +216,7 @@ archives, so the repo that owns it passes the ARN in.
 
 ```hcl
 module "imap_sync_uploader" {
-  source = "git::https://github.com/maneyko/imap-cloud-sync.git//terraform"
+  source = "git::https://github.com/maneyko/imap-s3-uploader.git//terraform"
 
   mail_archive_bucket_arn = aws_s3_bucket.mail_archive.arn
 }
