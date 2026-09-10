@@ -8,11 +8,6 @@
     system: true
     comment: User for the IMAP to S3 mail archiver
 
-# The service runs main.py through uv's script shebang, so uv has to exist
-# before the timer fires. The role is a no-op on a host that already has it,
-# but the group membership is not optional: uv lives inside a directory only
-# that group can enter. It comes second so the uv role adds an account that
-# already exists rather than creating a non-system one.
 - name: Install uv
   include_role:
     name: maneyko.roles.uv
@@ -26,8 +21,6 @@
     version: "{{ config.version | default('main') }}"
     dest: "{{ imap_cloud_sync_root }}"
 
-# The owner may edit the checkout; the service user may only read it. setgid on
-# the directories keeps a later `git pull` from handing files back to root.
 - name: Set imap-cloud-sync file permissions
   changed_when: false
   shell: |
@@ -83,9 +76,6 @@
     group: "{{ imap_cloud_sync_user }}"
     mode: '0600'
 
-# Copied, not linked: `systemctl disable` deletes a unit that is a symlink in
-# /etc/systemd/system, taking the deployment with it. Re-copying each run is
-# what keeps these in step with the checkout.
 - name: Install systemd units
   loop: [imap-cloud-sync.service, imap-cloud-sync.timer]
   copy:
