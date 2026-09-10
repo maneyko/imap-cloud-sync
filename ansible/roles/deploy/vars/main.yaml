@@ -6,8 +6,7 @@ imap_cloud_sync_root: /opt/imap-cloud-sync
 imap_cloud_sync_conf: /etc/imap-cloud-sync
 imap_cloud_sync_user: imap-cloud-sync
 
-# The bucket is hardcoded in lib/config.py, so its region is a property
-# of the app rather than of whoever deploys it.
+# Region of the bucket the caller names in config.bucket_name.
 imap_cloud_sync_aws_region: us-east-2
 
 # The account TOML names the file it is written to, so the list of documents

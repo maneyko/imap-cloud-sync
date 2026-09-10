@@ -51,6 +51,11 @@ uploader wants them on disk. Each is written to
 out of the TOML itself — so the list needs no keys and no parallel structure to
 keep in sync.
 
+`config.bucket_name` reaches the app as `BUCKET_NAME` in
+`/etc/imap-cloud-sync/environment`, which the service unit loads. It goes
+through a file rather than an `Environment=` line because the units are copied
+out of the checkout verbatim, so there is nothing to interpolate a value into.
+
 `imap_cloud_sync_repo` in `roles/deploy/vars/main.yaml` is an SSH URL, so the
 play needs agent forwarding (`ansible_ssh_extra_args: "-A"`) and `SSH_AUTH_SOCK`
 kept across `sudo`. Override it with an HTTPS URL to drop both requirements.
@@ -61,12 +66,13 @@ kept across `sudo`. Override it with an HTTPS URL to drop both requirements.
 |---|---|---|
 | `/opt/imap-cloud-sync` | `config.owner`, `2750` | the checkout; read-only to the service |
 | `/etc/imap-cloud-sync/secrets/` | `config.owner:imap-cloud-sync`, `0750` | one `<address>.toml` per account, `0640` |
+| `/etc/imap-cloud-sync/environment` | `config.owner`, `0644` | `BUCKET_NAME`, loaded by the unit |
 | `~imap-cloud-sync/.aws/` | the service user, `0700` | region and the access key pair |
 | `/etc/systemd/system/` | root | `imap-cloud-sync.service` and its `.timer` |
 
 Defaults live in `roles/deploy/vars/main.yaml` rather than `defaults/`, because
-they are facts about this app rather than knobs for a caller: the bucket is
-hardcoded in `lib/config.py`, so `us-east-2` is a property of the app.
+they are facts about this app rather than knobs for a caller: the paths, the
+service user, and the regex that reads a username back out of an account TOML.
 
 **The units are copied, not linked.** `systemctl disable` deletes a unit file
 that is a symlink into a checkout, so linking them would mean turning the timer
@@ -83,3 +89,7 @@ each one is capped by `max_download_mib`.
   by hand. A `config.enabled` defaulting to false would be the fix.
 - **The checkout is chowned without scoping git's `safe.directory`.** See the
   sharp edge of the same name in `../AGENTS.md`.
+- **The bucket's region is assumed, not passed.** `config.bucket_name` is a
+  caller setting, but `imap_cloud_sync_aws_region` is still a role var, so a
+  bucket outside `us-east-2` has to override it as a role param. A
+  `config.aws_region` next to `config.bucket_name` would be the fix.

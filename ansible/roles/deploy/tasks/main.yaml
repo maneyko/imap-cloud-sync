@@ -46,6 +46,14 @@
     group: "{{ imap_cloud_sync_user }}"
     mode: '0640'
 
+- name: Write imap-cloud-sync environment
+  copy:
+    dest: "{{ imap_cloud_sync_conf }}/environment"
+    content: |
+      BUCKET_NAME={{ config.bucket_name }}
+    owner: "{{ config.owner }}"
+    mode: '0644'
+
 - name: Create AWS config directory
   file:
     state: directory

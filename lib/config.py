@@ -1,4 +1,5 @@
 from functools import cached_property
+import os
 from pathlib import Path
 import platform
 import tomllib
@@ -17,7 +18,7 @@ DEFAULTS = {
     },
     "processing": {"batch_size": 5, "max_download_mib": 1024},
     "storage": {
-        "bucket_name": "my-mail-archive",
+        "bucket_name": os.getenv("BUCKET_NAME"),
         "timezone": "America/Chicago",
     }
 }

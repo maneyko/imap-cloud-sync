@@ -5,6 +5,7 @@ as a compressed object with a metadata sidecar. Append-only, resumable, and safe
 to interrupt at any moment.
 
 ```bash
+export BUCKET_NAME=my-mail-archive
 ./main.py                              # every account in /etc/imap-cloud-sync/secrets
 ./main.py me@example.com you@example.com
 ```
@@ -68,7 +69,7 @@ knowledge of the layout.
   "size": {"uncompressed": 191590, "compressed": 28019},
   "gmail": {"msgid": "1234567890123456789", "thrid": "1234567890123456789"},
   "message_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890@example.com",
-  "date": "2026-08-02T07:02:48-05:00",
+  "date": "2026-08-06T21:14:12-05:00",
   "subject": "Ends today: Up to 75% off new markdowns",
   "from": [{"email_address": "sender@example.com", "display_name": "Example"}],
   "to": [{"email_address": "me@example.com"}]
@@ -82,8 +83,8 @@ The full bucket, once the archiver has been through it:
 
 ```
 me@example.com/INBOX/state.json                                   sync checkpoint
-me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123.eml.zst      message
-me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123.eml.zst.json metadata
+me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst      message
+me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst.json metadata
 bucket-archive/config.toml                                        archiver settings
 bucket-archive/me@example.com/INBOX/archive-000001.tar            DEEP_ARCHIVE
 bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst   STANDARD
@@ -93,7 +94,8 @@ bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst   STANDARD
 
 One toml per account in `/etc/imap-cloud-sync/secrets/`, named for the address.
 Only the IMAP block is required; everything else has a default in
-[`lib/config.py`](lib/config.py).
+[`lib/config.py`](lib/config.py) — except the bucket, which is required and
+comes from `$BUCKET_NAME`.
 
 ```toml
 [imap]
@@ -108,9 +110,14 @@ password = "..."
 # max_download_mib = 1024   ceiling on what this account pulls per run
 
 [storage]
-# bucket_name = "my-mail-archive"
+# bucket_name = "..."       overrides $BUCKET_NAME for this one account
 # timezone = "America/Chicago"
 ```
+
+`BUCKET_NAME` names the bucket every account writes to, and has no default. On
+a host the Ansible role writes it to `/etc/imap-cloud-sync/environment` and the
+systemd unit loads it from there; by hand, export it. A single account can point
+somewhere else with `storage.bucket_name`.
 
 `mailboxes` is an allow-list intersected with what the server reports, so the
 same default works for Gmail and non-Gmail accounts.
@@ -163,7 +170,7 @@ password = "..."
 EOF
 
 # 2. sync (idempotent, resumable, safe to ctrl-c)
-./main.py me@example.com
+BUCKET_NAME=my-mail-archive ./main.py me@example.com
 
 # 3. tell the archiver how this bucket is laid out
 cat > /tmp/config.toml <<'EOF'
