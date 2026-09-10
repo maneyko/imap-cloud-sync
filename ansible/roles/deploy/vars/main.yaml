@@ -1,7 +1,5 @@
 ---
-# TODO: switch to an HTTPS URL once this repo is public, which drops the agent
-# forwarding an SSH clone needs.
-imap_cloud_sync_repo: git@github.com:maneyko/imap-cloud-sync.git
+imap_cloud_sync_repo: https://github.com/maneyko/imap-cloud-sync.git
 imap_cloud_sync_root: /opt/imap-cloud-sync
 imap_cloud_sync_conf: /etc/imap-cloud-sync
 imap_cloud_sync_user: imap-cloud-sync

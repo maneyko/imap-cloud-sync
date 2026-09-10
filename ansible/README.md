@@ -56,9 +56,10 @@ keep in sync.
 through a file rather than an `Environment=` line because the units are copied
 out of the checkout verbatim, so there is nothing to interpolate a value into.
 
-`imap_cloud_sync_repo` in `roles/deploy/vars/main.yaml` is an SSH URL, so the
-play needs agent forwarding (`ansible_ssh_extra_args: "-A"`) and `SSH_AUTH_SOCK`
-kept across `sudo`. Override it with an HTTPS URL to drop both requirements.
+`imap_cloud_sync_repo` in `roles/deploy/vars/main.yaml` is an HTTPS URL, so the
+clone is anonymous and the play needs nothing on the SSH side. Override it with
+an SSH URL to deploy from a private fork, and that brings back agent forwarding
+(`ansible_ssh_extra_args: "-A"`) and `SSH_AUTH_SOCK` kept across `sudo`.
 
 ## What it lays down
 
