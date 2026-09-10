@@ -35,9 +35,9 @@ or `bucket-archive/` belongs there.
 ## Sharp edges, all of which have already caused a bug
 
 **IAM resources are scoped by suffix, not by path.** `*/email/*` broke silently
-the moment the layout changed. The uploader's write policy now matches
-`*.eml.zst` and `*.eml.zst.json`, which cannot accidentally match a tar, a
-manifest, a `state.json`, or the config.
+the moment the layout changed. The uploader's write policy in
+`terraform/main.tf` now matches `*.eml.zst` and `*.eml.zst.json`, which cannot
+accidentally match a tar, a manifest, a `state.json`, or the config.
 
 **`min_age_seconds` in the archiver is a race guard, not a nicety.** The
 uploader writes the object and then its sidecar. If the archiver bundles in
@@ -115,6 +115,11 @@ a task.
 The account tomls name their own files: the role reads `imap.username` back out
 of each document, so the secret needs no keys alongside it.
 
+`terraform/` is the same bargain for AWS: the consumer hands over one bucket ARN
+and gets the uploader's credentials back, knowing nothing about how the policy
+is written. Consumers track `main` unless they add `?ref=<tag>`; either way a
+module change is only picked up on `terraform init -upgrade`.
+
 ## Repo map
 
 ```
@@ -129,6 +134,7 @@ lib/email.py           one message: parsing, metadata, compression
 lib/state.py           per-mailbox checkpoint stored in S3
 lib/config.py          per-account toml merged over the defaults
 etc/systemd/           the units the role installs into /etc/systemd/system
+terraform/             the module consumers use: the uploader's IAM user and key
 ```
 
 Account secrets live in `/etc/imap-cloud-sync/secrets/<address>.toml`, on the

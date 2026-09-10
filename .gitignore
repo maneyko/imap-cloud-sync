@@ -3,3 +3,5 @@ secrets/
 *@*/
 venv/
 dist/
+.terraform/
+*.tfstate*

@@ -200,19 +200,34 @@ The repo that owns the machine holds no imap-cloud-sync logic beyond that call �
 it fetches the secret from wherever it keeps secrets and hands it over. See
 [`ansible/README.md`](ansible/README.md).
 
-## Infrastructure
+## Terraform module
 
-This repo declares no infrastructure. What it needs is a bucket and one IAM
-identity, which in my case are Terraform in a separate repo alongside the
-Lambda (from `bucket-archiver`'s module) and its schedule — but nothing here
-depends on how they were created.
+[`terraform/`](terraform/) is a module holding the only infrastructure this repo
+owns: the IAM user the uploader runs as, its access key and its policy. The
+bucket is not in here — it is shared with the archiver and with unrelated
+archives, so the repo that owns it passes the ARN in.
+
+```hcl
+module "imap_sync_uploader" {
+  source = "git::https://github.com/maneyko/imap-cloud-sync.git//terraform"
+
+  mail_archive_bucket_arn = aws_s3_bucket.mail_archive.arn
+}
+```
+
+The `access_key_id` and `secret_access_key` outputs are what the Ansible role
+above installs on the host.
 
 The IAM split is the part worth copying. Two identities touch the archive and
 neither can do the other's job. The uploader may only `PutObject` on
 `*.eml.zst` and
 `*.eml.zst.json` and read/write `*/state.json` — it cannot delete anything, so a
-stolen laptop key cannot destroy the archive. The Lambda may write only under
-`bucket-archive/` and delete only source objects.
+stolen laptop key cannot destroy the archive. The Lambda from
+[bucket-archiver](https://github.com/maneyko/bucket-archiver) may write only
+under `bucket-archive/` and delete only source objects.
+
+The source above tracks `main`; add `?ref=<tag>` to pin, and `terraform init
+-upgrade` to pick up a change either way.
 
 ## Roughly what it costs
 
