@@ -24,8 +24,8 @@ DEFAULTS = {
 
 app_root = Path(__file__).resolve().parent.parent
 
-# Deployed at /etc/imap-cloud-sync/secrets; symlink it at a scratch directory to
-# work on a checkout.
+# The checkout's secrets/ is gitignored, so real credentials can sit in a
+# working tree.
 if platform.uname().system == "Darwin":
     SECRETS_DIR = app_root / "secrets"
 else:

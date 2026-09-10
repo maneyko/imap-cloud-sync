@@ -23,7 +23,7 @@ repo.
 `maneyko.roles` is listed because this role installs `uv` through
 `maneyko.roles.uv`. It is not declared as a collection dependency in
 `galaxy.yml`: that would send `ansible-galaxy` to the public Galaxy server
-looking for a collection that only exists in a private git repo.
+looking for a collection that is only published as a git repo.
 
 ```yaml
 - hosts: all

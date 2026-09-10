@@ -1,13 +1,8 @@
 from compression import zstd
-import os
 import platform
 import signal
-import subprocess
-import sys
 
 import boto3
-
-from lib import config
 
 class NoSuchKey(Exception): pass
 

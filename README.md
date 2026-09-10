@@ -64,7 +64,7 @@ knowledge of the layout.
 
 ```json
 {
-  "internaldate": "2026-08-06T16:14:20-05:00",
+  "internaldate": "2026-08-06T21:14:20-05:00",
   "size": {"uncompressed": 191590, "compressed": 28019},
   "gmail": {"msgid": "1234567890123456789", "thrid": "1234567890123456789"},
   "message_id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890@example.com",

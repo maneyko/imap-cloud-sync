@@ -137,6 +137,7 @@ etc/systemd/           the units the role installs into /etc/systemd/system
 terraform/             the module consumers use: the uploader's IAM user and key
 ```
 
-Account secrets live in `/etc/imap-cloud-sync/secrets/<address>.toml`, on the
-host and on a laptop alike; symlink that path at a scratch directory to work on
-a checkout.
+Account secrets are one `<address>.toml` per account. `lib/config.py` picks the
+directory by platform: `/etc/imap-cloud-sync/secrets/` on a host, the checkout's
+own `secrets/` on macOS, which is gitignored. Working on a checkout needs no
+symlink and no root-owned path.
