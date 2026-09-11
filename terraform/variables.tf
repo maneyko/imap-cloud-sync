@@ -1,7 +1,7 @@
 variable "user_name" {
   description = "Name of the IAM user and its inline policy"
   type        = string
-  default     = "imap-sync-uploader"
+  default     = "email-exporter"
 }
 
 variable "mail_archive_bucket_arn" {
