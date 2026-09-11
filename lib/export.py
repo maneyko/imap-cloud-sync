@@ -20,7 +20,7 @@ class EmailAddress:
         "Whether this run has already pulled the account's max_download_mib from IMAP."
         return self.downloaded_bytes >= self.config.max_download_mib * 1024**2
 
-class Sync:
+class Export:
     def __init__(self, email_address: str):
         self.email_address = EmailAddress(email_address)
 
@@ -32,14 +32,14 @@ class Sync:
     def validate_unique_mailboxes(self):
         "Not really necessary since the mailbox names are stated explicitly."
         imap_names = [mbox["name"].decode() for mbox in self.mailboxes]
-        s3_names = [SyncMailbox.get_mailbox_s3_name(name) for name in imap_names]
+        s3_names = [ExportMailbox.get_mailbox_s3_name(name) for name in imap_names]
 
         if len(set(imap_names)) != len(set(s3_names)):
             mapping = {"imap_names": imap_names, "s3_names": s3_names}
             raise RuntimeError(f"Mailbox names for S3 are not unique: {json.dumps(mapping)}")
 
     def run(self) -> int:
-        "Sync all mailboxes for the email address."
+        "Export all mailboxes for the email address."
         try:
             # self.validate_unique_mailboxes()
             for mailbox in self.mailboxes:
@@ -49,7 +49,7 @@ class Sync:
                 if self.email_address.download_budget_exhausted:
                     print(f"Downloaded {self.email_address.config.max_download_mib} MiB: skipping remaining mailboxes")
                     break
-                SyncMailbox(self.email_address, mailbox).run()
+                ExportMailbox(self.email_address, mailbox).run()
             return 0
         finally:
             try:
@@ -58,7 +58,7 @@ class Sync:
                 pass
 
 
-class SyncMailbox:
+class ExportMailbox:
     def __init__(self, email_address: EmailAddress, mailbox="INBOX"):
         self.email_address = email_address
         self.mailbox = mailbox

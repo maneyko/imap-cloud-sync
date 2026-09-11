@@ -2,7 +2,7 @@
 
 The role that deploys this repo onto a host: uv, a system user, a clone at
 `/opt/email-exporter`, per-account secrets in `/etc/email-exporter/secrets/`,
-AWS credentials for the service user, and the systemd timer that runs the sync.
+AWS credentials for the service user, and the systemd timer that runs the export.
 
 `requirements.yml`:
 
@@ -79,7 +79,7 @@ service user, and the regex that reads a username back out of an account TOML.
 that is a symlink into a checkout, so linking them would mean turning the timer
 off also removed it.
 
-`OnCalendar=daily`, deliberately: a first sync of a large Gmail account is
+`OnCalendar=daily`, deliberately: a first export of a large Gmail account is
 throttled to roughly 2.5 GB/day, so the backfill is meant to take many runs and
 each one is capped by `max_download_mib`.
 

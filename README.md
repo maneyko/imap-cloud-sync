@@ -11,7 +11,7 @@ export BUCKET_NAME=my-mail-archive
 ./main.py me@example.com you@example.com
 ```
 
-One process syncs every account, one account at a time, then exits. Run it from
+One process exports every account, one account at a time, then exits. Run it from
 the timer in [`etc/systemd/`](etc/systemd/) or by hand.
 
 The second half of the story lives elsewhere: those small objects are rolled
@@ -83,7 +83,7 @@ strings to accommodate programs that cannot handle 64-bit numbers.
 The full bucket, once the archiver has been through it:
 
 ```
-me@example.com/INBOX/state.json                                                sync checkpoint
+me@example.com/INBOX/state.json                                                export checkpoint
 me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst         message
 me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst.json    metadata
 bucket-archive/config.toml                                                     archiver settings
@@ -123,7 +123,7 @@ somewhere else with `storage.bucket_name`.
 `mailboxes` is an allow-list intersected with what the server reports, so the
 same default works for Gmail and non-Gmail accounts.
 
-`max_download_mib` bounds each run. It exists because a first sync of a Gmail
+`max_download_mib` bounds each run. It exists because a first export of a Gmail
 All Mail folder is ~14 GiB and Google throttles IMAP to roughly 2.5 GB/day —
 so the backfill is meant to take many runs. The budget is checked at batch
 boundaries, so it always stops on a written checkpoint.
@@ -137,25 +137,25 @@ bucket is the record.
 Two things to know before editing one by hand:
 
 - `uidvalidity` must match the server, or the exporter treats the mailbox as
-  reset and re-syncs from UID 0. It differs per mailbox, not per account.
+  reset and re-exports from UID 0. It differs per mailbox, not per account.
 - The exporter fetches from `last_processed_uid + 1`, so to start at UID *n*,
   store `n - 1`.
 
 ## Interrupts
 
-`SIGINT`/`SIGTERM` set a flag; the sync stops at the next batch boundary, pushes
+`SIGINT`/`SIGTERM` set a flag; the export stops at the next batch boundary, pushes
 its checkpoint, logs out cleanly, and exits `128 + signum`. A second signal
 aborts immediately. Worst case on a hard kill is re-fetching one batch, since
 uploads are idempotent.
 
 ## Gmail notes
 
-- Sync `[Gmail]/All Mail`: it is a superset of INBOX and Sent, so syncing all
-  three stores everything twice.
-- UID order does not follow date order. A bulk re-label rewrites UIDs, so a sync
-  can appear to walk backwards through the years. Keys are date-based, so this
-  is cosmetic.
-- Archiving a message in Gmail removes it from INBOX, and an INBOX-only sync
+- Export `[Gmail]/All Mail`: it is a superset of INBOX and Sent, so exporting
+  all three stores everything twice.
+- UID order does not follow date order. A bulk re-label rewrites UIDs, so an
+  export can appear to walk backwards through the years. Keys are date-based, so
+  this is cosmetic.
+- Archiving a message in Gmail removes it from INBOX, and an INBOX-only export
   cannot see it again — another reason to prefer All Mail.
 
 ## Getting started
@@ -170,7 +170,7 @@ username = "me@example.com"
 password = "..."
 EOF
 
-# 2. sync (idempotent, resumable, safe to ctrl-c)
+# 2. export (idempotent, resumable, safe to ctrl-c)
 BUCKET_NAME=my-mail-archive ./main.py me@example.com
 
 # 3. tell the archiver how this bucket is laid out

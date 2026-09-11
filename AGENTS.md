@@ -22,7 +22,7 @@ way and which sharp edges have already drawn blood.
 
 This repo fetches mail over IMAP and writes each message to a destination,
 tracking its own state. That is the whole contract: it has no notion of storage
-classes, tiers or retention, and `write_to_dest` in `lib/sync.py` is its kernel.
+classes, tiers or retention, and `write_to_dest` in `lib/export.py` is its kernel.
 The archiver that rolls these objects into Deep Archive tars lives in
 [bucket-archiver](https://github.com/maneyko/bucket-archiver); it knows nothing
 about email, and that separation is deliberate. Anything about tars, manifests,
@@ -48,14 +48,14 @@ exporter writes the object and then its sidecar. If the archiver bundles in
 between, that message loses its metadata permanently.
 
 **S3 keys embed the UID, so a different UID is a duplicate, not an overwrite.**
-This is how the historical import and the live sync can both hold the same
+This is how the historical import and the live export can both hold the same
 message. Dedupe on `Message-ID`, not on key.
 
 **`imaplib._MAXLINE` caps a `UID SEARCH` reply at 1 MB**, which a 125k-message
 mailbox exceeds. `MailClient.uids()` pages the search in windows derived from
 that constant.
 
-**A `uidvalidity` mismatch resets `last_processed_uid` to 0** and re-syncs the
+**A `uidvalidity` mismatch resets `last_processed_uid` to 0** and re-exports the
 entire mailbox. When hand-writing a `state.json`, the `uidvalidity` must match
 the server exactly, and it is per *mailbox*, not per account.
 
@@ -87,7 +87,7 @@ own `environment:`, leaving no state on the host. Not done here yet.
 **Gmail:** `X-GM-*` fetch attributes are gated on the `X-GM-EXT-1` capability,
 not on the address — Workspace domains serve them too, and a server without them
 rejects the whole `FETCH` as `BAD`. Gmail UID order does not follow date order
-(a re-label rewrites UIDs), so a sync can march *backwards* through time. IMAP
+(a re-label rewrites UIDs), so an export can march *backwards* through time. IMAP
 downloads are throttled to roughly 2.5 GB/day per account, which is why the
 timer is daily and `max_download_mib` caps a single run.
 
@@ -98,7 +98,7 @@ worked:
 
 - **Create a throwaway bucket** and exercise the real code path against it, then
   delete the bucket.
-- **Sync one account at a time** (`./main.py me@example.com`) and cap it with
+- **Export one account at a time** (`./main.py me@example.com`) and cap it with
   `max_download_mib` so a change can be rehearsed on a small mailbox before it
   runs against a 125k-message one.
 - **Verify by reading back from S3**, not by trusting the return code.
@@ -132,7 +132,7 @@ ansible/
   roles/deploy/        uv, user, clone, secrets, AWS creds, systemd timer
 
 main.py                entry point; one process, all accounts, exits when done
-lib/sync.py            the per-mailbox loop and checkpointing
+lib/export.py          the per-mailbox loop and checkpointing
 lib/mail_client.py     IMAP plumbing, reconnects, UID paging, capability detection
 lib/email.py           one message: parsing, metadata, compression
 lib/state.py           per-mailbox checkpoint stored in S3

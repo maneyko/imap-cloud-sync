@@ -1,5 +1,5 @@
 [Unit]
-Description=Periodic IMAP to S3 sync (email-exporter)
+Description=Periodic IMAP to S3 export (email-exporter)
 
 [Timer]
 Unit=email-exporter.service

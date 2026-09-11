@@ -5,11 +5,11 @@
 # requires-python = ">=3.14"
 # ///
 
-"""Sync every configured mailbox to S3, then exit.
+"""Export every configured mailbox to S3, then exit.
 
-With no arguments every account in /etc/email-exporter/secrets is synced; pass
-addresses to
-limit it. Each account stops once it has pulled its max_download_mib.
+With no arguments every account in /etc/email-exporter/secrets is exported;
+pass addresses to limit it. Each account stops once it has pulled its
+max_download_mib.
 
     ./main.py
     ./main.py me@example.com you@example.com
@@ -22,7 +22,7 @@ import sys
 import traceback
 
 from lib.config import SECRETS_DIR
-from lib.sync import Sync
+from lib.export import Export
 from lib.util import install_interrupt_handlers, interrupted
 
 
@@ -39,9 +39,9 @@ def main() -> int:
     while skipped and (name := skipped.pop()):
         if interrupted(): break
         try:
-            code = Sync(name).run()
+            code = Export(name).run()
             if code == 0:
-                status["synced"].append(name)
+                status["exported"].append(name)
             else:
                 status["interrupted"].append(name)
         except Exception:
@@ -49,14 +49,14 @@ def main() -> int:
             status["failed"].append(name)
 
     if failed := status.get("failed"):
-        print(f"ERROR: Sync failed: {json.dumps(status)}")
+        print(f"ERROR: Export failed: {json.dumps(status)}")
         return 1
 
     if interrupted():
         print(f"INTERRUPTED by {interrupted().name}: {json.dumps(status)}")
         return 128 + interrupted()
 
-    print(f"SUCCESS: Synced emails: {json.dumps(status)}")
+    print(f"SUCCESS: Exported emails: {json.dumps(status)}")
     return 0
 
 

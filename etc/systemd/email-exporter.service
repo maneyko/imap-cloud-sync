@@ -1,5 +1,5 @@
 [Unit]
-Description=Sync IMAP mailboxes to S3 (email-exporter)
+Description=Export IMAP mailboxes to S3 (email-exporter)
 After=network-online.target
 
 [Service]
