@@ -131,8 +131,9 @@ ansible/
   galaxy.yml           collection metadata; consumed as maneyko.email_exporter
   roles/deploy/        uv, user, clone, secrets, AWS creds, systemd timer
 
-main.py                entry point; one process, all accounts, exits when done
+main.py                the uv script header; hands straight to lib/__main__.py
 defaults.toml          every setting an account toml can override
+lib/__main__.py        one process, all accounts, exit codes, `python -m lib`
 lib/export.py          the per-mailbox loop and checkpointing
 lib/mail_client.py     IMAP plumbing, reconnects, UID paging, capability detection
 lib/email.py           one message: parsing, metadata, compression
