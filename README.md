@@ -94,26 +94,18 @@ bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst          S
 ## Configuration
 
 One toml per account in `/etc/email-exporter/secrets/`, named for the address.
-Only the IMAP block is required; everything else has a default in
-[`lib/config.py`](lib/config.py) — except the bucket, which is required and
-comes from `$BUCKET_NAME`.
+Only three keys are required:
 
 ```toml
 [imap]
 server   = "imap.example.com"
 username = "me@example.com"
 password = "..."
-# port = 993
-# mailboxes = ['"INBOX"', 'INBOX', '"[Gmail]/All Mail"', '"[Gmail]/Sent Mail"', '"Sent Items"']
-
-[processing]
-# batch_size = 5            messages per FETCH, and per checkpoint
-# max_download_mib = 1024   ceiling on what this account pulls per run
-
-[storage]
-# bucket_name = "..."       overrides $BUCKET_NAME for this one account
-# timezone = "America/Chicago"
 ```
+
+Everything else has a default in [`defaults.toml`](defaults.toml), which is laid
+out exactly like an account toml — copy a line out of it to override one. The
+bucket is the exception: it has no default and comes from `$BUCKET_NAME`.
 
 `BUCKET_NAME` names the bucket every account writes to, and has no default. On
 a host the Ansible role writes it to `/etc/email-exporter/environment` and the

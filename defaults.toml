@@ -1,0 +1,15 @@
+# Every setting an account toml can override, at the value used when it does
+# not. Accounts live in /etc/email-exporter/secrets/<address>.toml.
+
+[imap]
+# server, username and password have no default; set them per account.
+port = 993
+mailboxes = ['"INBOX"', 'INBOX', '"[Gmail]/All Mail"', '"[Gmail]/Sent Mail"', '"Sent Items"']
+
+[processing]
+batch_size = 5
+max_download_mib = 1024
+
+[storage]
+timezone = "America/Chicago"
+# bucket_name comes from $BUCKET_NAME; set it here to send one account elsewhere.

@@ -132,6 +132,7 @@ ansible/
   roles/deploy/        uv, user, clone, secrets, AWS creds, systemd timer
 
 main.py                entry point; one process, all accounts, exits when done
+defaults.toml          every setting an account toml can override
 lib/export.py          the per-mailbox loop and checkpointing
 lib/mail_client.py     IMAP plumbing, reconnects, UID paging, capability detection
 lib/email.py           one message: parsing, metadata, compression

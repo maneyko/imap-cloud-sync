@@ -5,25 +5,12 @@ import platform
 import tomllib
 from zoneinfo import ZoneInfo
 
-DEFAULTS = {
-    "imap": {
-        "port": 993,
-        "mailboxes": [
-            '"INBOX"',
-            'INBOX',
-            '"[Gmail]/All Mail"',
-            '"[Gmail]/Sent Mail"',
-            '"Sent Items"',
-        ],
-    },
-    "processing": {"batch_size": 5, "max_download_mib": 1024},
-    "storage": {
-        "bucket_name": os.getenv("BUCKET_NAME"),
-        "timezone": "America/Chicago",
-    }
-}
-
 app_root = Path(__file__).resolve().parent.parent
+
+with open(app_root / "defaults.toml", "rb") as f:
+    DEFAULTS = tomllib.load(f)
+
+DEFAULTS["storage"]["bucket_name"] = os.getenv("BUCKET_NAME")
 
 # The checkout's secrets/ is gitignored, so real credentials can sit in a
 # working tree.
