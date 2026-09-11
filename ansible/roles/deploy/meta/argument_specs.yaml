@@ -1,7 +1,7 @@
 ---
 argument_specs:
   main:
-    short_description: Deploy imap-s3-uploader and its systemd timer
+    short_description: Deploy email-exporter and its systemd timer
     options:
       config:
         type: dict

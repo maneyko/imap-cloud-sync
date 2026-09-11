@@ -1,12 +1,12 @@
 ---
-imap_s3_uploader_repo: https://github.com/maneyko/imap-s3-uploader.git
-imap_s3_uploader_root: /opt/imap-s3-uploader
-imap_s3_uploader_conf: /etc/imap-s3-uploader
-imap_s3_uploader_user: imap-s3-uploader
+email_exporter_repo: https://github.com/maneyko/email-exporter.git
+email_exporter_root: /opt/email-exporter
+email_exporter_conf: /etc/email-exporter
+email_exporter_user: email-exporter
 
 # Region of the bucket the caller names in config.bucket_name.
-imap_s3_uploader_aws_region: us-east-2
+email_exporter_aws_region: us-east-2
 
 # The account TOML names the file it is written to, so the list of documents
 # needs no keys alongside it.
-imap_s3_uploader_username_re: 'username\s*=\s*"([^"]+)"'
+email_exporter_username_re: 'username\s*=\s*"([^"]+)"'

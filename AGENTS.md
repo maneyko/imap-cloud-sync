@@ -107,7 +107,7 @@ worked:
 
 ## Deploying
 
-`ansible/` is a collection with one role, `maneyko.imap_s3_uploader.deploy`,
+`ansible/` is a collection with one role, `maneyko.email_exporter.deploy`,
 which is how this lands on a host. The caller passes exactly two variables,
 `config` and `secrets`, and holds no knowledge of the layout — not the paths,
 not the unit names, not the fact that accounts are tomls. Keep it that way: if
@@ -126,7 +126,7 @@ module change is only picked up on `terraform init -upgrade`.
 
 ```
 ansible/
-  galaxy.yml           collection metadata; consumed as maneyko.imap_s3_uploader
+  galaxy.yml           collection metadata; consumed as maneyko.email_exporter
   roles/deploy/        uv, user, clone, secrets, AWS creds, systemd timer
 
 main.py                entry point; one process, all accounts, exits when done
@@ -140,6 +140,6 @@ terraform/             the module consumers use: the uploader's IAM user and key
 ```
 
 Account secrets are one `<address>.toml` per account. `lib/config.py` picks the
-directory by platform: `/etc/imap-s3-uploader/secrets/` on a host, the checkout's
+directory by platform: `/etc/email-exporter/secrets/` on a host, the checkout's
 own `secrets/` on macOS, which is gitignored. Working on a checkout needs no
 symlink and no root-owned path.

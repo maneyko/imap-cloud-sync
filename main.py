@@ -7,7 +7,7 @@
 
 """Sync every configured mailbox to S3, then exit.
 
-With no arguments every account in /etc/imap-s3-uploader/secrets is synced; pass
+With no arguments every account in /etc/email-exporter/secrets is synced; pass
 addresses to
 limit it. Each account stops once it has pulled its max_download_mib.
 

@@ -1,9 +1,9 @@
 ---
-- name: Create imap-s3-uploader user
+- name: Create email-exporter user
   register: app_user
   user:
-    name: "{{ imap_s3_uploader_user }}"
-    home: /var/lib/{{ imap_s3_uploader_user }}
+    name: "{{ email_exporter_user }}"
+    home: /var/lib/{{ email_exporter_user }}
     shell: /usr/sbin/nologin
     system: true
     comment: User for the IMAP to S3 mail archiver
@@ -12,43 +12,43 @@
   include_role:
     name: maneyko.roles.uv
   vars:
-    uv_users: ["{{ imap_s3_uploader_user }}"]
+    uv_users: ["{{ email_exporter_user }}"]
 
-- name: Clone imap-s3-uploader repo
+- name: Clone email-exporter repo
   git:
     accept_hostkey: true
-    repo: "{{ imap_s3_uploader_repo }}"
+    repo: "{{ email_exporter_repo }}"
     version: "{{ config.version | default('main') }}"
-    dest: "{{ imap_s3_uploader_root }}"
+    dest: "{{ email_exporter_root }}"
 
-- name: Set imap-s3-uploader file permissions
+- name: Set email-exporter file permissions
   changed_when: false
   shell: |
-    chown -R {{ config.owner }}:{{ imap_s3_uploader_user }} {{ imap_s3_uploader_root }}
-    find {{ imap_s3_uploader_root }} -type d -exec chmod 2750 {} +
-    find {{ imap_s3_uploader_root }} -type f -exec chmod g-w,o= {} +
+    chown -R {{ config.owner }}:{{ email_exporter_user }} {{ email_exporter_root }}
+    find {{ email_exporter_root }} -type d -exec chmod 2750 {} +
+    find {{ email_exporter_root }} -type f -exec chmod g-w,o= {} +
 
-- name: Create imap-s3-uploader secrets directory
+- name: Create email-exporter secrets directory
   file:
     state: directory
-    path: "{{ imap_s3_uploader_conf }}/secrets"
+    path: "{{ email_exporter_conf }}/secrets"
     owner: "{{ config.owner }}"
-    group: "{{ imap_s3_uploader_user }}"
+    group: "{{ email_exporter_user }}"
     mode: '0750'
 
-- name: Write imap-s3-uploader account secrets
+- name: Write email-exporter account secrets
   loop: "{{ secrets.users }}"
   no_log: true
   copy:
     content: "{{ item }}"
-    dest: "{{ imap_s3_uploader_conf }}/secrets/{{ (item | regex_findall(imap_s3_uploader_username_re)) | first }}.toml"
+    dest: "{{ email_exporter_conf }}/secrets/{{ (item | regex_findall(email_exporter_username_re)) | first }}.toml"
     owner: "{{ config.owner }}"
-    group: "{{ imap_s3_uploader_user }}"
+    group: "{{ email_exporter_user }}"
     mode: '0640'
 
-- name: Write imap-s3-uploader environment
+- name: Write email-exporter environment
   copy:
-    dest: "{{ imap_s3_uploader_conf }}/environment"
+    dest: "{{ email_exporter_conf }}/environment"
     content: |
       BUCKET_NAME={{ config.bucket_name }}
     owner: "{{ config.owner }}"
@@ -58,8 +58,8 @@
   file:
     state: directory
     path: "{{ app_user.home }}/.aws"
-    owner: "{{ imap_s3_uploader_user }}"
-    group: "{{ imap_s3_uploader_user }}"
+    owner: "{{ email_exporter_user }}"
+    group: "{{ email_exporter_user }}"
     mode: '0700'
 
 - name: Write AWS region
@@ -67,9 +67,9 @@
     dest: "{{ app_user.home }}/.aws/config"
     content: |
       [default]
-      region = {{ imap_s3_uploader_aws_region }}
-    owner: "{{ imap_s3_uploader_user }}"
-    group: "{{ imap_s3_uploader_user }}"
+      region = {{ email_exporter_aws_region }}
+    owner: "{{ email_exporter_user }}"
+    group: "{{ email_exporter_user }}"
     mode: '0644'
 
 - name: Write AWS credentials
@@ -80,21 +80,21 @@
       [default]
       aws_access_key_id = {{ secrets.aws.credentials.access_key }}
       aws_secret_access_key = {{ secrets.aws.credentials.secret_key }}
-    owner: "{{ imap_s3_uploader_user }}"
-    group: "{{ imap_s3_uploader_user }}"
+    owner: "{{ email_exporter_user }}"
+    group: "{{ email_exporter_user }}"
     mode: '0600'
 
 - name: Install systemd units
-  loop: [imap-s3-uploader.service, imap-s3-uploader.timer]
+  loop: [email-exporter.service, email-exporter.timer]
   copy:
     remote_src: true
-    src: "{{ imap_s3_uploader_root }}/etc/systemd/{{ item }}"
+    src: "{{ email_exporter_root }}/etc/systemd/{{ item }}"
     dest: /etc/systemd/system/{{ item }}
     mode: '0644'
 
-- name: Enable imap-s3-uploader timer
+- name: Enable email-exporter timer
   systemd_service:
-    name: imap-s3-uploader.timer
+    name: email-exporter.timer
     daemon_reload: true
     enabled: true
     state: started

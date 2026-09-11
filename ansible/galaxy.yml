@@ -1,11 +1,11 @@
 ---
 namespace: maneyko
-name: imap_s3_uploader
+name: email_exporter
 version: 1.0.0
 readme: README.md
 authors:
   - maneyko
-description: Deploys imap-s3-uploader onto a host
+description: Deploys email-exporter onto a host
 license:
   - MIT
 build_ignore:
