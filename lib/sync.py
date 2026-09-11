@@ -1,6 +1,3 @@
-# exec(open("main.py").read())
-# from main import EmailAddress, SyncMailbox; addr = EmailAddress("me@example.com"); mbox = SyncMailbox(addr)
-
 from functools import cached_property
 import json
 import re

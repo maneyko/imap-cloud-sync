@@ -78,17 +78,17 @@ knowledge of the layout.
 ```
 
 The `gmail` block appears only for servers advertising `X-GM-EXT-1`. The ids are
-strings because they are 64-bit and `jq` would round them as numbers.
+strings to accommodate programs that cannot handle 64-bit numbers.
 
 The full bucket, once the archiver has been through it:
 
 ```
-me@example.com/INBOX/state.json                                   sync checkpoint
-me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst      message
-me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst.json metadata
-bucket-archive/config.toml                                        archiver settings
-bucket-archive/me@example.com/INBOX/archive-000001.tar            DEEP_ARCHIVE
-bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst   STANDARD
+me@example.com/INBOX/state.json                                                sync checkpoint
+me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst         message
+me@example.com/INBOX/2026/08/06/21-14-20.1786068860.uid-123456.eml.zst.json    metadata
+bucket-archive/config.toml                                                     archiver settings
+bucket-archive/me@example.com/INBOX/archive-000001.tar                         DEEP_ARCHIVE
+bucket-archive/me@example.com/INBOX/archive-000001.manifest.jsonl.zst          STANDARD
 ```
 
 ## Configuration
