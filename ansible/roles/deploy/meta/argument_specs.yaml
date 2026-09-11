@@ -12,7 +12,7 @@ argument_specs:
             type: str
             required: true
             description: >-
-              Bucket the uploader writes messages and sync state to, handed to
+              Bucket the exporter writes messages and sync state to, handed to
               main.py as BUCKET_NAME. The app has no default for it.
           owner:
             type: str
@@ -43,12 +43,12 @@ argument_specs:
           aws:
             type: dict
             required: true
-            description: AWS credentials for the bucket the uploader writes to.
+            description: AWS credentials for the bucket the exporter writes to.
             options:
               credentials:
                 type: dict
                 required: true
-                description: Access key pair for the uploader's IAM user.
+                description: Access key pair for the exporter's IAM user.
                 options:
                   access_key:
                     type: str

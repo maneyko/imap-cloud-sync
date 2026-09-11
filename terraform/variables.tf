@@ -5,6 +5,6 @@ variable "user_name" {
 }
 
 variable "mail_archive_bucket_arn" {
-  description = "Bucket the uploader may write messages and sync state to"
+  description = "Bucket the exporter may write messages and sync state to"
   type        = string
 }

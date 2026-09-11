@@ -1,8 +1,9 @@
 # email-exporter
 
-Personal mail archive. Pulls mail off IMAP servers and stores each message in S3
-as a compressed object with a metadata sidecar. Append-only, resumable, and safe
-to interrupt at any moment.
+Exports IMAP mailboxes to S3. Fetches messages in small batches and writes each
+one to its destination as a compressed object with a metadata sidecar,
+checkpointing after every batch. Append-only, resumable, and safe to interrupt
+at any moment.
 
 ```bash
 export BUCKET_NAME=my-mail-archive
@@ -135,9 +136,9 @@ bucket is the record.
 
 Two things to know before editing one by hand:
 
-- `uidvalidity` must match the server, or the uploader treats the mailbox as
+- `uidvalidity` must match the server, or the exporter treats the mailbox as
   reset and re-syncs from UID 0. It differs per mailbox, not per account.
-- The uploader fetches from `last_processed_uid + 1`, so to start at UID *n*,
+- The exporter fetches from `last_processed_uid + 1`, so to start at UID *n*,
   store `n - 1`.
 
 ## Interrupts
@@ -210,12 +211,12 @@ it fetches the secret from wherever it keeps secrets and hands it over. See
 ## Terraform module
 
 [`terraform/`](terraform/) is a module holding the only infrastructure this repo
-owns: the IAM user the uploader runs as, its access key and its policy. The
+owns: the IAM user the exporter runs as, its access key and its policy. The
 bucket is not in here — it is shared with the archiver and with unrelated
 archives, so the repo that owns it passes the ARN in.
 
 ```hcl
-module "imap_sync_uploader" {
+module "email_exporter" {
   source = "git::https://github.com/maneyko/email-exporter.git//terraform"
 
   mail_archive_bucket_arn = aws_s3_bucket.mail_archive.arn
@@ -226,7 +227,7 @@ The `access_key_id` and `secret_access_key` outputs are what the Ansible role
 above installs on the host.
 
 The IAM split is the part worth copying. Two identities touch the archive and
-neither can do the other's job. The uploader may only `PutObject` on
+neither can do the other's job. The exporter may only `PutObject` on
 `*.eml.zst` and
 `*.eml.zst.json` and read/write `*/state.json` — it cannot delete anything, so a
 stolen laptop key cannot destroy the archive. The Lambda from

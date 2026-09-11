@@ -1,5 +1,5 @@
 # The identity main.py runs as on the host: a long-lived access key, because
-# the uploader is a Debian box outside AWS with nothing to assume a role with.
+# the exporter is a Debian box outside AWS with nothing to assume a role with.
 
 resource "aws_iam_user" "this" {
   name = var.user_name

@@ -46,7 +46,7 @@ Do not reach for `-M`: it is `--module-path`, and `ansible-doc -t role -M roles
 in a README for months.
 
 `secrets.users` is a list of complete account TOML documents, exactly as the
-uploader wants them on disk. Each is written to
+exporter wants them on disk. Each is written to
 `/etc/email-exporter/secrets/<username>.toml`, where `<username>` is read back
 out of the TOML itself — so the list needs no keys and no parallel structure to
 keep in sync.

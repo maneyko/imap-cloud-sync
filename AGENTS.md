@@ -20,15 +20,17 @@ way and which sharp edges have already drawn blood.
 
 ## Scope
 
-This repo is the uploader only. The archiver that rolls these objects into
-Deep Archive tars lives in
+This repo fetches mail over IMAP and writes each message to a destination,
+tracking its own state. That is the whole contract: it has no notion of storage
+classes, tiers or retention, and `write_to_dest` in `lib/sync.py` is its kernel.
+The archiver that rolls these objects into Deep Archive tars lives in
 [bucket-archiver](https://github.com/maneyko/bucket-archiver); it knows nothing
 about email, and that separation is deliberate. Anything about tars, manifests,
 or `bucket-archive/` belongs there.
 
 ## Invariants — do not break these
 
-1. **The uploader can never delete.** Its IAM key has no `DeleteObject`. Keep it
+1. **The exporter can never delete.** Its IAM key has no `DeleteObject`. Keep it
    that way; it is the reason a compromised client cannot destroy the archive.
 2. **Metadata failure must never block ingestion.** The raw message is the
    record. If headers cannot be parsed, store the message with thin metadata and
@@ -37,12 +39,12 @@ or `bucket-archive/` belongs there.
 ## Sharp edges, all of which have already caused a bug
 
 **IAM resources are scoped by suffix, not by path.** `*/email/*` broke silently
-the moment the layout changed. The uploader's write policy in
+the moment the layout changed. The exporter's write policy in
 `terraform/main.tf` now matches `*.eml.zst` and `*.eml.zst.json`, which cannot
 accidentally match a tar, a manifest, a `state.json`, or the config.
 
 **`min_age_seconds` in the archiver is a race guard, not a nicety.** The
-uploader writes the object and then its sidecar. If the archiver bundles in
+exporter writes the object and then its sidecar. If the archiver bundles in
 between, that message loses its metadata permanently.
 
 **S3 keys embed the UID, so a different UID is a duplicate, not an overwrite.**
@@ -118,7 +120,7 @@ The account tomls name their own files: the role reads `imap.username` back out
 of each document, so the secret needs no keys alongside it.
 
 `terraform/` is the same bargain for AWS: the consumer hands over one bucket ARN
-and gets the uploader's credentials back, knowing nothing about how the policy
+and gets the exporter's credentials back, knowing nothing about how the policy
 is written. Consumers track `main` unless they add `?ref=<tag>`; either way a
 module change is only picked up on `terraform init -upgrade`.
 
@@ -136,7 +138,7 @@ lib/email.py           one message: parsing, metadata, compression
 lib/state.py           per-mailbox checkpoint stored in S3
 lib/config.py          per-account toml merged over the defaults
 etc/systemd/           the units the role installs into /etc/systemd/system
-terraform/             the module consumers use: the uploader's IAM user and key
+terraform/             the module consumers use: the exporter's IAM user and key
 ```
 
 Account secrets are one `<address>.toml` per account. `lib/config.py` picks the
