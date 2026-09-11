@@ -5,9 +5,10 @@ import platform
 import tomllib
 from zoneinfo import ZoneInfo
 
-app_root = Path(__file__).resolve().parent.parent
+lib_root = Path(__file__).resolve().parent
+app_root = lib_root.parent
 
-with open(app_root / "defaults.toml", "rb") as f:
+with open(lib_root / "defaults.toml", "rb") as f:
     DEFAULTS = tomllib.load(f)
 
 DEFAULTS["storage"]["bucket_name"] = os.getenv("BUCKET_NAME")

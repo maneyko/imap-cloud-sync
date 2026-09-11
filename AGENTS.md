@@ -132,13 +132,13 @@ ansible/
   roles/deploy/        uv, user, clone, secrets, AWS creds, systemd timer
 
 main.py                the uv script header; hands straight to lib/__main__.py
-defaults.toml          every setting an account toml can override
 lib/__main__.py        one process, all accounts, exit codes, `python -m lib`
 lib/export.py          the per-mailbox loop and checkpointing
 lib/mail_client.py     IMAP plumbing, reconnects, UID paging, capability detection
 lib/email.py           one message: parsing, metadata, compression
 lib/state.py           per-mailbox checkpoint stored in S3
 lib/config.py          per-account toml merged over the defaults
+lib/defaults.toml      those defaults, laid out like an account toml
 etc/systemd/           the units the role installs into /etc/systemd/system
 terraform/             the module consumers use: the exporter's IAM user and key
 ```

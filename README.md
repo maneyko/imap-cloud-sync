@@ -103,7 +103,7 @@ username = "me@example.com"
 password = "..."
 ```
 
-Everything else has a default in [`defaults.toml`](defaults.toml), which is laid
+Everything else has a default in [`lib/defaults.toml`](lib/defaults.toml), which is laid
 out exactly like an account toml — copy a line out of it to override one. The
 bucket is the exception: it has no default and comes from `$BUCKET_NAME`.
 
